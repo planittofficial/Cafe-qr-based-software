@@ -1,1 +1,0 @@
-# Cafe-qr-based-software
