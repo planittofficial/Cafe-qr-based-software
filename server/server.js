@@ -8,6 +8,11 @@ const authRoutes = require('./routes/authRoutes');
 const cafeRoutes = require('./routes/cafeRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const adminMenuRoutes = require('./routes/adminMenuRoutes');
+const adminTableRoutes = require('./routes/adminTableRoutes');
+const superAdminRoutes = require('./routes/superAdminRoutes');
+const adminUserRoutes = require('./routes/adminUserRoutes');
+const adminMediaRoutes = require('./routes/adminMediaRoutes');
+const adminCafeRoutes = require('./routes/adminCafeRoutes');
 const cors = require('cors');
 const { initSocket } = require('./realtime/socket');
 
@@ -28,6 +33,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/cafe', cafeRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/menu', adminMenuRoutes);
+app.use('/api/admin/tables', adminTableRoutes);
+app.use('/api/superadmin', superAdminRoutes);
+app.use('/api/admin/users', adminUserRoutes);
+app.use('/api/admin/media', adminMediaRoutes);
+app.use('/api/admin/cafe', adminCafeRoutes);
 
 // Health check
 app.get('/', (req, res) => {

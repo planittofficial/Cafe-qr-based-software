@@ -118,6 +118,14 @@ export default function MenuPage() {
                       <div className="mt-2 font-extrabold text-orange-700">₹{it.price}</div>
                     </div>
 
+                    {it.image ? (
+                      <img
+                        src={it.image}
+                        alt={it.name}
+                        className="h-20 w-24 rounded-xl object-cover border border-orange-100 shrink-0"
+                      />
+                    ) : null}
+
                     {!inCart ? (
                       <Button onClick={() => add(it)} className="shrink-0 gap-2">
                         <Plus size={18} /> Add

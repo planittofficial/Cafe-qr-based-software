@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../../../lib/api";
+import { apiFetch, getApiBaseUrl } from "../../../lib/api";
 import { authHeaders, clearToken, getToken, getUser } from "../../../lib/auth";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardContent } from "../../../components/ui/Card";
@@ -30,9 +30,11 @@ export default function AdminMenuPage() {
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("Drinks");
   const [type, setType] = useState("veg");
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageUploading, setImageUploading] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", price: "", category: "", type: "veg" });
+  const [editForm, setEditForm] = useState({ name: "", description: "", price: "", category: "", type: "veg", image: "" });
 
   const listUrl = useMemo(() => {
     const qs = adminCafeId ? `?cafeId=${encodeURIComponent(adminCafeId)}` : "";
@@ -45,6 +47,42 @@ export default function AdminMenuPage() {
     const categories = new Set(items.map((i) => i.category)).size;
     return { total, available, categories };
   }, [items]);
+
+  const baseCustomerUrl = useMemo(() => window.location.origin, []);
+
+  const [tables, setTables] = useState([]);
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [tableError, setTableError] = useState("");
+  const [tableCount, setTableCount] = useState("");
+
+  const [staffUsername, setStaffUsername] = useState("");
+  const [staffEmail, setStaffEmail] = useState("");
+  const [staffPassword, setStaffPassword] = useState("");
+  const [staffRole, setStaffRole] = useState("kitchen");
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffError, setStaffError] = useState("");
+  const [staffSuccess, setStaffSuccess] = useState("");
+
+  const [staffList, setStaffList] = useState([]);
+  const [staffListLoading, setStaffListLoading] = useState(false);
+  const [staffListError, setStaffListError] = useState("");
+
+  const [cafeInfo, setCafeInfo] = useState(null);
+  const [cafeForm, setCafeForm] = useState({ name: "", address: "", logoUrl: "", brandImageUrl: "" });
+  const [cafeLoading, setCafeLoading] = useState(false);
+  const [cafeError, setCafeError] = useState("");
+  const [cafeSuccess, setCafeSuccess] = useState("");
+  const [cafeLogoUploading, setCafeLogoUploading] = useState(false);
+  const [cafeBrandUploading, setCafeBrandUploading] = useState(false);
+
+  const tablesCafeId = useMemo(
+    () => (role === "super_admin" ? adminCafeId : user?.cafeId || ""),
+    [role, adminCafeId, user?.cafeId]
+  );
+
+  const staffCafeId = tablesCafeId;
+
+  const cafeIdForAdmin = tablesCafeId;
 
   const requireLogin = () => {
     const token = getToken();
@@ -73,9 +111,271 @@ export default function AdminMenuPage() {
     }
   };
 
+  const loadTables = async () => {
+    if (!requireLogin()) return;
+    if (!tablesCafeId) {
+      setTables([]);
+      return;
+    }
+    setTablesLoading(true);
+    setTableError("");
+    try {
+      const qs = role === "super_admin" ? `?cafeId=${encodeURIComponent(tablesCafeId)}` : "";
+      const data = await apiFetch(`/api/admin/tables${qs}`, { headers: { ...authHeaders() } });
+      setTables(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setTableError(e.message || "Failed to load tables");
+    } finally {
+      setTablesLoading(false);
+    }
+  };
+
+  const generateTables = async () => {
+    if (!requireLogin()) return;
+    if (!tablesCafeId && role === "super_admin") {
+      setTableError("cafeId is required");
+      return;
+    }
+    setTablesLoading(true);
+    setTableError("");
+    try {
+      const body = {};
+      if (role === "super_admin") body.cafeId = tablesCafeId;
+      if (tableCount) body.numberOfTables = Number(tableCount);
+      const data = await apiFetch("/api/admin/tables/generate", {
+        method: "POST",
+        headers: { ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      setTables(Array.isArray(data.tables) ? data.tables : []);
+    } catch (e) {
+      setTableError(e.message || "Failed to generate tables");
+    } finally {
+      setTablesLoading(false);
+    }
+  };
+
+  const uploadCafeImage = async (file, setter, setUploading) => {
+    if (!file) return;
+    if (!requireLogin()) return;
+    setUploading(true);
+    setCafeError("");
+    try {
+      const baseUrl = getApiBaseUrl();
+      if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${baseUrl}/api/admin/media/image`, {
+        method: "POST",
+        headers: {
+          ...(authHeaders() || {}),
+        },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Upload failed");
+      setter(data.url || "");
+    } catch (e) {
+      setCafeError(e.message || "Image upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const loadCafe = async () => {
+    if (!requireLogin()) return;
+    if (!cafeIdForAdmin) {
+      setCafeInfo(null);
+      return;
+    }
+    setCafeLoading(true);
+    setCafeError("");
+    try {
+      const qs = role === "super_admin" ? `?cafeId=${encodeURIComponent(cafeIdForAdmin)}` : "";
+      const data = await apiFetch(`/api/admin/cafe${qs}`, { headers: { ...authHeaders() } });
+      setCafeInfo(data || null);
+      setCafeForm({
+        name: data?.name || "",
+        address: data?.address || "",
+        logoUrl: data?.logoUrl || "",
+        brandImageUrl: data?.brandImageUrl || "",
+      });
+    } catch (e) {
+      setCafeError(e.message || "Failed to load cafe");
+    } finally {
+      setCafeLoading(false);
+    }
+  };
+
+  const saveCafe = async (event) => {
+    event.preventDefault();
+    if (!requireLogin()) return;
+    if (!cafeIdForAdmin) {
+      setCafeError("cafeId is required");
+      return;
+    }
+    setCafeLoading(true);
+    setCafeError("");
+    setCafeSuccess("");
+    try {
+      const body = {
+        name: cafeForm.name,
+        address: cafeForm.address,
+        logoUrl: cafeForm.logoUrl,
+        brandImageUrl: cafeForm.brandImageUrl,
+      };
+      if (role === "super_admin") body.cafeId = cafeIdForAdmin;
+      const updated = await apiFetch("/api/admin/cafe", {
+        method: "PATCH",
+        headers: { ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      setCafeInfo(updated);
+      setCafeSuccess("Cafe updated");
+    } catch (e) {
+      setCafeError(e.message || "Failed to update cafe");
+    } finally {
+      setCafeLoading(false);
+    }
+  };
+
+  const uploadImage = async (file) => {
+    if (!file) return;
+    if (!requireLogin()) return;
+    setImageUploading(true);
+    setError("");
+    try {
+      const baseUrl = getApiBaseUrl();
+      if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${baseUrl}/api/admin/media/image`, {
+        method: "POST",
+        headers: {
+          ...(authHeaders() || {}),
+        },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Upload failed");
+      setImageUrl(data.url || "");
+    } catch (e) {
+      setError(e.message || "Image upload failed");
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const loadStaff = async () => {
+    if (!requireLogin()) return;
+    if (!staffCafeId) {
+      setStaffList([]);
+      return;
+    }
+    setStaffListLoading(true);
+    setStaffListError("");
+    try {
+      const qs = role === "super_admin" ? `?cafeId=${encodeURIComponent(staffCafeId)}` : "";
+      const data = await apiFetch(`/api/admin/users${qs}`, { headers: { ...authHeaders() } });
+      setStaffList(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setStaffListError(e.message || "Failed to load staff");
+    } finally {
+      setStaffListLoading(false);
+    }
+  };
+
+  const resetStaffPassword = async (id) => {
+    const newPassword = window.prompt("Enter a new password for this account:");
+    if (!newPassword) return;
+    setStaffListLoading(true);
+    setStaffListError("");
+    try {
+      await apiFetch(`/api/admin/users/${id}/password`, {
+        method: "PATCH",
+        headers: { ...authHeaders() },
+        body: JSON.stringify({ password: newPassword }),
+      });
+      setStaffListLoading(false);
+      loadStaff();
+    } catch (e) {
+      setStaffListError(e.message || "Failed to reset password");
+      setStaffListLoading(false);
+    }
+  };
+
+  const deleteStaff = async (id) => {
+    const ok = window.confirm("Delete this staff account?");
+    if (!ok) return;
+    setStaffListLoading(true);
+    setStaffListError("");
+    try {
+      await apiFetch(`/api/admin/users/${id}`, {
+        method: "DELETE",
+        headers: { ...authHeaders() },
+      });
+      setStaffList((prev) => prev.filter((u) => u.id !== id));
+    } catch (e) {
+      setStaffListError(e.message || "Failed to delete staff");
+    } finally {
+      setStaffListLoading(false);
+    }
+  };
+
+  const createStaff = async (event) => {
+    event.preventDefault();
+    if (!requireLogin()) return;
+    setStaffLoading(true);
+    setStaffError("");
+    setStaffSuccess("");
+    try {
+      const body = {
+        username: staffUsername || undefined,
+        email: staffEmail || undefined,
+        password: staffPassword,
+        role: staffRole,
+      };
+      if (role === "super_admin") {
+        if (!adminCafeId) {
+          setStaffError("cafeId is required for super admin");
+          setStaffLoading(false);
+          return;
+        }
+        body.cafeId = adminCafeId;
+      }
+
+      const created = await apiFetch("/api/admin/users", {
+        method: "POST",
+        headers: { ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      setStaffUsername("");
+      setStaffEmail("");
+      setStaffPassword("");
+      setStaffRole("kitchen");
+      setStaffSuccess(`Created ${created.role} account for ${created.username || created.email}`);
+    } catch (e) {
+      setStaffError(e.message || "Failed to create staff");
+    } finally {
+      setStaffLoading(false);
+    }
+  };
+
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (tablesCafeId) loadTables();
+  }, [tablesCafeId]);
+
+  useEffect(() => {
+    if (cafeIdForAdmin) loadCafe();
+  }, [cafeIdForAdmin]);
+
+  useEffect(() => {
+    if (staffCafeId) loadStaff();
+  }, [staffCafeId]);
 
   const createItem = async (e) => {
     e.preventDefault();
@@ -89,6 +389,7 @@ export default function AdminMenuPage() {
         price: Number(price),
         category,
         type,
+        image: imageUrl || "",
         isAvailable: true,
       };
       if (role === "super_admin" && adminCafeId) body.cafeId = adminCafeId;
@@ -103,6 +404,7 @@ export default function AdminMenuPage() {
       setPrice("");
       setCategory("Drinks");
       setType("veg");
+      setImageUrl("");
       setItems((prev) => upsertById(prev, data));
     } catch (e2) {
       setError(e2.message || "Failed to create item");
@@ -119,12 +421,13 @@ export default function AdminMenuPage() {
       price: String(item.price ?? ""),
       category: item.category || "",
       type: item.type || "veg",
+      image: item.image || "",
     });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditForm({ name: "", description: "", price: "", category: "", type: "veg" });
+    setEditForm({ name: "", description: "", price: "", category: "", type: "veg", image: "" });
   };
 
   const saveEdit = async () => {
@@ -139,6 +442,7 @@ export default function AdminMenuPage() {
         price: Number(editForm.price),
         category: editForm.category,
         type: editForm.type,
+        image: editForm.image || "",
       };
       if (role === "super_admin" && adminCafeId) body.cafeId = adminCafeId;
 
@@ -245,6 +549,241 @@ export default function AdminMenuPage() {
           </Card>
         )}
 
+        <Card className="border border-orange-100 shadow-xl">
+          <CardContent>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-bold">Cafe branding</div>
+                <div className="text-sm text-gray-600 mt-1">Update cafe name, logo, and brand image.</div>
+              </div>
+              <Button variant="outline" onClick={loadCafe} disabled={cafeLoading || !cafeIdForAdmin}>
+                Refresh branding
+              </Button>
+            </div>
+
+            {!cafeIdForAdmin ? (
+              <div className="mt-4 text-sm text-gray-600">Provide a cafeId to edit branding.</div>
+            ) : (
+              <form className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={saveCafe}>
+                <Input
+                  value={cafeForm.name}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Cafe name"
+                  required
+                />
+                <Input
+                  value={cafeForm.address}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, address: e.target.value }))}
+                  placeholder="Address"
+                />
+                <div className="space-y-2">
+                  <Input
+                    value={cafeForm.logoUrl}
+                    onChange={(e) => setCafeForm((p) => ({ ...p, logoUrl: e.target.value }))}
+                    placeholder="Logo URL"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadCafeImage(e.target.files?.[0], (url) => setCafeForm((p) => ({ ...p, logoUrl: url })), setCafeLogoUploading)}
+                    className="text-sm text-slate-600"
+                  />
+                  {cafeLogoUploading && <div className="text-xs text-slate-500">Uploading logo...</div>}
+                </div>
+                <div className="space-y-2">
+                  <Input
+                    value={cafeForm.brandImageUrl}
+                    onChange={(e) => setCafeForm((p) => ({ ...p, brandImageUrl: e.target.value }))}
+                    placeholder="Brand image URL"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadCafeImage(e.target.files?.[0], (url) => setCafeForm((p) => ({ ...p, brandImageUrl: url })), setCafeBrandUploading)}
+                    className="text-sm text-slate-600"
+                  />
+                  {cafeBrandUploading && <div className="text-xs text-slate-500">Uploading brand image...</div>}
+                </div>
+                <div className="md:col-span-2">
+                  <Button className="w-full" type="submit" disabled={cafeLoading}>
+                    {cafeLoading ? "Saving..." : "Save branding"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {cafeError && <div className="mt-3 text-red-700 font-semibold">{cafeError}</div>}
+            {cafeSuccess && <div className="mt-3 text-emerald-700 font-semibold">{cafeSuccess}</div>}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-orange-100 shadow-xl">
+          <CardContent>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-bold">Table QR codes</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Generate one QR per table. Each QR links to the cafe with its table number.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={loadTables} disabled={tablesLoading || !tablesCafeId}>
+                  Refresh tables
+                </Button>
+              </div>
+            </div>
+
+            <form
+              className="mt-4 flex flex-wrap items-center gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                generateTables();
+              }}
+            >
+              <Input
+                value={tableCount}
+                onChange={(e) => setTableCount(e.target.value)}
+                placeholder="Number of tables (optional)"
+                type="number"
+                min={1}
+              />
+              <div className="text-xs text-gray-500">
+                Leave empty to use the cafe's saved number of tables.
+              </div>
+              <Button variant="outline" type="submit" disabled={tablesLoading}>
+                Save seats & generate
+              </Button>
+            </form>
+
+            {tableError && <div className="mt-3 text-red-700 font-semibold">{tableError}</div>}
+
+            {tablesCafeId ? (
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {tables.map((table) => {
+                  const tableUrl = `${baseCustomerUrl}/${tablesCafeId}?table=${table.tableNumber}`;
+                  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(tableUrl)}`;
+                  return (
+                    <div key={table._id} className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-slate-900">Table {table.tableNumber}</div>
+                        <a className="text-xs font-semibold text-orange-600" href={tableUrl} target="_blank" rel="noreferrer">
+                          Open
+                        </a>
+                      </div>
+                      <div className="mt-3 flex items-center justify-center">
+                        <img src={qrUrl} alt={`QR for table ${table.tableNumber}`} className="h-40 w-40 rounded-xl border border-orange-100" />
+                      </div>
+                      <div className="mt-3 text-xs text-gray-500 break-all">{tableUrl}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-gray-600">
+                Provide a cafeId to load table QR codes.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-orange-100 shadow-xl">
+          <CardContent>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-bold">Create staff account</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Add chef or waiter accounts for your cafe. Super admins must provide a cafeId.
+                </div>
+              </div>
+            </div>
+
+            <form className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={createStaff}>
+              <Input
+                value={staffUsername}
+                onChange={(e) => setStaffUsername(e.target.value)}
+                placeholder="Username"
+              />
+              <Input
+                value={staffEmail}
+                onChange={(e) => setStaffEmail(e.target.value)}
+                placeholder="Email (optional)"
+                type="email"
+              />
+              <Input
+                value={staffPassword}
+                onChange={(e) => setStaffPassword(e.target.value)}
+                placeholder="Password"
+                type="password"
+                required
+              />
+              <select
+                value={staffRole}
+                onChange={(e) => setStaffRole(e.target.value)}
+                className="w-full rounded-lg border border-orange-200 px-3 py-2 text-sm text-slate-900"
+              >
+                <option value="kitchen">Chef (Kitchen)</option>
+                <option value="staff">Waiter/Staff</option>
+              </select>
+              <div className="md:col-span-2">
+                <Button className="w-full" type="submit" disabled={staffLoading}>
+                  {staffLoading ? "Creating..." : "Create staff account"}
+                </Button>
+              </div>
+            </form>
+
+            {staffError && <div className="mt-3 text-red-700 font-semibold">{staffError}</div>}
+            {staffSuccess && <div className="mt-3 text-emerald-700 font-semibold">{staffSuccess}</div>}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-orange-100 shadow-xl">
+          <CardContent>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-bold">Staff accounts</div>
+                <div className="text-sm text-gray-600 mt-1">Manage chef and waiter accounts.</div>
+              </div>
+              <Button variant="outline" onClick={loadStaff} disabled={staffListLoading || !staffCafeId}>
+                Refresh staff
+              </Button>
+            </div>
+
+            {staffListError && <div className="mt-3 text-red-700 font-semibold">{staffListError}</div>}
+
+            {staffCafeId ? (
+              staffList.length === 0 && !staffListLoading ? (
+                <div className="mt-4 text-sm text-gray-600">No staff accounts yet.</div>
+              ) : (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {staffList.map((staff) => (
+                    <div key={staff.id} className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold text-slate-900">{staff.username || staff.email}</div>
+                          <div className="text-xs text-slate-500">{staff.email || "No email"}</div>
+                        </div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-orange-600">
+                          {staff.role === "kitchen" ? "Chef" : staff.role === "staff" ? "Waiter" : "Admin"}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => resetStaffPassword(staff.id)} disabled={staffListLoading}>
+                          Reset password
+                        </Button>
+                        <Button variant="outline" onClick={() => deleteStaff(staff.id)} disabled={staffListLoading}>
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="mt-4 text-sm text-gray-600">Provide a cafeId to manage staff.</div>
+            )}
+          </CardContent>
+        </Card>
+
         {error && <div className="text-red-700 font-semibold">{error}</div>}
 
         <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-6">
@@ -255,8 +794,26 @@ export default function AdminMenuPage() {
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
                 <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" type="number" required />
                 <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" required />
-                <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Type (veg/non-veg)" />
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  className="w-full rounded-lg border border-orange-200 px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="veg">Veg</option>
+                  <option value="non-veg">Non-veg</option>
+                  <option value="customer-insights">Customer Insights</option>
+                </select>
                 <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" rows={3} />
+                <div className="space-y-2">
+                  <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Image URL (optional)" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadImage(e.target.files?.[0])}
+                    className="text-sm text-slate-600"
+                  />
+                  {imageUploading && <div className="text-xs text-slate-500">Uploading...</div>}
+                </div>
                 <Button className="w-full" type="submit" disabled={loading}>
                   {loading ? "Saving..." : "Create item"}
                 </Button>
@@ -286,7 +843,16 @@ export default function AdminMenuPage() {
                         <Input value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} placeholder="Name" />
                         <Input value={editForm.price} onChange={(e) => setEditForm((p) => ({ ...p, price: e.target.value }))} placeholder="Price" type="number" />
                         <Input value={editForm.category} onChange={(e) => setEditForm((p) => ({ ...p, category: e.target.value }))} placeholder="Category" />
-                        <Input value={editForm.type} onChange={(e) => setEditForm((p) => ({ ...p, type: e.target.value }))} placeholder="Type (veg/non-veg)" />
+                        <select
+                          value={editForm.type}
+                          onChange={(e) => setEditForm((p) => ({ ...p, type: e.target.value }))}
+                          className="w-full rounded-lg border border-orange-200 px-3 py-2 text-sm text-slate-900"
+                        >
+                          <option value="veg">Veg</option>
+                          <option value="non-veg">Non-veg</option>
+                          <option value="customer-insights">Customer Insights</option>
+                        </select>
+                        <Input value={editForm.image} onChange={(e) => setEditForm((p) => ({ ...p, image: e.target.value }))} placeholder="Image URL" />
                         <Textarea value={editForm.description} onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))} placeholder="Description" rows={3} />
                         <div className="flex gap-2">
                           <Button onClick={saveEdit} disabled={loading}>Save</Button>
@@ -297,6 +863,11 @@ export default function AdminMenuPage() {
                       <>
                         <div className="mt-3 text-sm text-slate-700">{it.description || <span className="text-slate-500">No description</span>}</div>
                         <div className="mt-3 font-extrabold text-slate-900">INR {Number(it.price || 0).toFixed(2)}</div>
+                        {it.image && (
+                          <div className="mt-3">
+                            <img src={it.image} alt={it.name} className="h-28 w-full rounded-xl object-cover border border-orange-100" />
+                          </div>
+                        )}
                       </>
                     )}
 

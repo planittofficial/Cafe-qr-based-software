@@ -28,6 +28,8 @@ export default function CartPage() {
 
   const [cart, setCart] = useState([]);
   const [customer, setCustomer] = useState(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -43,11 +45,25 @@ export default function CartPage() {
 
     try {
       const raw = localStorage.getItem(sessionKey(cafeId, tableNumber));
-      setCustomer(raw ? JSON.parse(raw) : null);
+      const parsed = raw ? JSON.parse(raw) : null;
+      setCustomer(parsed);
+      setCustomerName(parsed?.name || "");
+      setCustomerPhone(parsed?.phone || "");
     } catch {
       setCustomer(null);
+      setCustomerName("");
+      setCustomerPhone("");
     }
   }, [cafeId, tableNumber]);
+
+  useEffect(() => {
+    if (!cafeId || !tableNumber) return;
+    if (!customerName && !customerPhone) return;
+    localStorage.setItem(
+      sessionKey(cafeId, tableNumber),
+      JSON.stringify({ cafeId, tableNumber, name: customerName.trim(), phone: customerPhone.trim() })
+    );
+  }, [cafeId, tableNumber, customerName, customerPhone]);
 
   useEffect(() => {
     if (!cafeId || !tableNumber) return;
@@ -66,8 +82,10 @@ export default function CartPage() {
 
   const placeOrder = async () => {
     if (!cafeId || !tableNumber) return;
-    if (!customer?.name || !customer?.phone) {
-      setError("Missing customer info. Please go back and enter name/phone.");
+    const nameToUse = customerName?.trim();
+    const phoneToUse = customerPhone?.trim();
+    if (!nameToUse || !phoneToUse) {
+      setError("Please enter your name and phone.");
       return;
     }
     if (cart.length === 0) return;
@@ -80,8 +98,8 @@ export default function CartPage() {
         body: JSON.stringify({
           cafeId,
           tableNumber,
-          customerName: customer.name,
-          phone: customer.phone,
+          customerName: nameToUse,
+          phone: phoneToUse,
           items: cart.map((x) => ({ name: x.name, price: x.price, qty: x.qty, menuItemId: x._id })),
         }),
       });
@@ -111,7 +129,16 @@ export default function CartPage() {
       {cart.length === 0 ? (
         <div className="mt-8 text-gray-700">Cart is empty.</div>
       ) : (
-        <div className="mt-6 space-y-3">
+      <div className="mt-6 space-y-3">
+        <Card>
+          <CardContent>
+            <div className="text-sm font-semibold text-gray-700">Customer details</div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Your name" />
+              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone number" />
+            </div>
+          </CardContent>
+        </Card>
           {cart.map((x) => (
             <Card key={x._id}>
               <CardContent>

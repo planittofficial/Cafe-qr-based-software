@@ -3,9 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { apiFetch } from "../../lib/api";
-import { Button } from "../../components/ui/Button";
-import { Card, CardContent } from "../../components/ui/Card";
-import { Input } from "../../components/ui/Input";
 
 export default function CafeEntryPage() {
   const router = useRouter();
@@ -20,9 +17,6 @@ export default function CafeEntryPage() {
 
   const [cafe, setCafe] = useState(null);
   const [splash, setSplash] = useState(true);
-  const [step, setStep] = useState("landing");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -46,69 +40,47 @@ export default function CafeEntryPage() {
     };
   }, [cafeId]);
 
-  const handleContinue = (e) => {
-    e.preventDefault();
-    if (!name.trim()) return setError("Please enter your name");
-    if (!phone.trim()) return setError("Please enter your phone number");
-    if (!tableNumber) return setError("Missing table number (?table=1)");
-
-    const sessionKey = `customer:${cafeId}:table:${tableNumber}`;
-    localStorage.setItem(
-      sessionKey,
-      JSON.stringify({ cafeId, tableNumber, name: name.trim(), phone: phone.trim() })
-    );
-    router.replace(`/${cafeId}/menu?table=${tableNumber}`);
-  };
+  useEffect(() => {
+    if (splash) return;
+    if (!tableNumber) {
+      setError("Missing table number (?table=1)");
+      return;
+    }
+    if (cafeId) {
+      router.replace(`/${cafeId}/menu?table=${tableNumber}`);
+    }
+  }, [splash, cafeId, tableNumber, router]);
 
   if (splash) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-200">
-        <div className="text-center">
-          <div className="text-5xl font-extrabold text-brand mb-2">
-            {cafe?.name || "QRDine"}
+      <div
+        className="min-h-screen flex items-center justify-center bg-cover bg-center"
+        style={{
+          backgroundImage: cafe?.brandImageUrl ? `url(${cafe.brandImageUrl})` : "none",
+        }}
+      >
+        <div className="min-h-screen w-full bg-black/50 backdrop-blur-sm flex items-center justify-center px-6">
+          <div className="text-center text-white">
+            {cafe?.logoUrl ? (
+              <img src={cafe.logoUrl} alt={cafe?.name || "Cafe"} className="mx-auto mb-4 h-20 w-20 rounded-2xl object-cover border border-white/30" />
+            ) : (
+              <div className="mx-auto mb-4 h-20 w-20 rounded-2xl bg-white/20 flex items-center justify-center text-3xl font-extrabold">
+                Q
+              </div>
+            )}
+            <div className="text-4xl font-extrabold">{cafe?.name || "QRDine"}</div>
+            <div className="mt-2 text-sm font-semibold text-white/80">Loading menu…</div>
           </div>
-          <div className="text-gray-600 font-semibold">Loading…</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className="min-h-screen bg-cover bg-center"
-      style={{ backgroundImage: cafe?.brandImageUrl ? `url(${cafe.brandImageUrl})` : "none" }}
-    >
-      <div className="min-h-screen bg-white/70 backdrop-blur-sm flex items-center justify-center p-6">
-        <Card className="w-full max-w-md">
-          <CardContent>
-            <div className="flex items-center gap-3 mb-4">
-              {cafe?.logoUrl ? (
-                <img src={cafe.logoUrl} alt={cafe.name} className="w-12 h-12 rounded-xl object-cover" />
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-brand font-extrabold">Q</div>
-              )}
-              <div>
-                <div className="text-xl font-extrabold text-orange-700">{cafe?.name || "Cafe"}</div>
-                <div className="text-sm text-gray-600">Table {tableNumber || "?"}</div>
-              </div>
-            </div>
-
-            {step === "landing" ? (
-              <>
-                <p className="text-gray-700 mb-6">Scan. Order. Pay at counter.</p>
-                <Button className="w-full" onClick={() => setStep("info")}>Get Started</Button>
-              </>
-            ) : (
-              <form onSubmit={handleContinue} className="space-y-4">
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" />
-                <Button className="w-full" type="submit">Continue to Menu</Button>
-              </form>
-            )}
-
-            {error && <p className="text-red-600 font-semibold mt-4">{error}</p>}
-          </CardContent>
-        </Card>
+    <div className="min-h-screen flex items-center justify-center bg-orange-50">
+      <div className="text-center">
+        <div className="text-lg font-semibold text-gray-700">Redirecting to menu…</div>
+        {error && <div className="mt-3 text-red-600 font-semibold">{error}</div>}
       </div>
     </div>
   );

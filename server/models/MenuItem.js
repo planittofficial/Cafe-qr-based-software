@@ -27,7 +27,7 @@ const menuItemSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['veg', 'non-veg'],
+        enum: ['veg', 'non-veg', 'customer-insights'],
         default: 'veg',
     },
     isAvailable: {
