@@ -24,7 +24,7 @@ exports.getCafeById = async (req, res) => {
 
 exports.createCafe = async (req, res) => {
   try {
-    const { name, address, numberOfTables, logoUrl, brandImageUrl } = req.body;
+    const { name, address, numberOfTables, logoUrl, brandImageUrl, taxPercent, discountType, discountValue, discountPercent } = req.body;
     if (!name) return res.status(400).json({ message: "name is required" });
 
     const cafe = await Cafe.create({
@@ -33,6 +33,13 @@ exports.createCafe = async (req, res) => {
       numberOfTables: Number(numberOfTables || 0),
       logoUrl: logoUrl || "",
       brandImageUrl: brandImageUrl || "",
+      taxPercent: typeof taxPercent !== "undefined" ? Number(taxPercent || 0) : 0,
+      discountType: typeof discountType === "string" ? discountType : "percent",
+      discountValue: typeof discountValue !== "undefined"
+        ? Number(discountValue || 0)
+        : typeof discountPercent !== "undefined"
+          ? Number(discountPercent || 0)
+          : 0,
     });
 
     const tableCount = cafe.numberOfTables || 0;
@@ -65,13 +72,21 @@ exports.resetTableSessions = async (req, res) => {
 
 exports.updateCafe = async (req, res) => {
   try {
-    const { name, address, numberOfTables, logoUrl, brandImageUrl, isActive } = req.body;
+    const { name, address, numberOfTables, logoUrl, brandImageUrl, isActive, taxPercent, discountType, discountValue, discountPercent } = req.body;
     const updates = {};
     if (typeof name === "string") updates.name = name;
     if (typeof address === "string") updates.address = address;
     if (typeof numberOfTables !== "undefined") updates.numberOfTables = Number(numberOfTables || 0);
     if (typeof logoUrl === "string") updates.logoUrl = logoUrl;
     if (typeof brandImageUrl === "string") updates.brandImageUrl = brandImageUrl;
+    if (typeof taxPercent !== "undefined") updates.taxPercent = Number(taxPercent || 0);
+    if (typeof discountType === "string") updates.discountType = discountType;
+    if (typeof discountValue !== "undefined") {
+      updates.discountValue = Number(discountValue || 0);
+    } else if (typeof discountPercent !== "undefined") {
+      updates.discountType = "percent";
+      updates.discountValue = Number(discountPercent || 0);
+    }
     if (typeof isActive !== "undefined") updates.isActive = Boolean(isActive);
 
     const cafe = await Cafe.findByIdAndUpdate(req.params.id, updates, { new: true });

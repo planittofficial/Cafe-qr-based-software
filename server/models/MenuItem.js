@@ -34,6 +34,10 @@ const menuItemSchema = new mongoose.Schema({
         type: Boolean,
         default: true,
     },
+    isSpecial: {
+        type: Boolean,
+        default: false,
+    },
     image: {
         type: String,
         default: '', // You can store a URL or path to the image

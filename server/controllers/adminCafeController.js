@@ -30,6 +30,14 @@ exports.updateCafe = async (req, res) => {
     if (typeof req.body.address === "string") updates.address = req.body.address;
     if (typeof req.body.logoUrl === "string") updates.logoUrl = req.body.logoUrl;
     if (typeof req.body.brandImageUrl === "string") updates.brandImageUrl = req.body.brandImageUrl;
+    if (typeof req.body.taxPercent !== "undefined") updates.taxPercent = Number(req.body.taxPercent || 0);
+    if (typeof req.body.discountType === "string") updates.discountType = req.body.discountType;
+    if (typeof req.body.discountValue !== "undefined") {
+      updates.discountValue = Number(req.body.discountValue || 0);
+    } else if (typeof req.body.discountPercent !== "undefined") {
+      updates.discountType = "percent";
+      updates.discountValue = Number(req.body.discountPercent || 0);
+    }
 
     const cafe = await Cafe.findByIdAndUpdate(cafeId, updates, { new: true });
     if (!cafe) return res.status(404).json({ message: "Cafe not found" });

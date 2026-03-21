@@ -7,6 +7,9 @@ const cafeSchema = new mongoose.Schema(
     numberOfTables: { type: Number, default: 0, min: 0 },
     logoUrl: { type: String, default: "", trim: true },
     brandImageUrl: { type: String, default: "", trim: true },
+    taxPercent: { type: Number, default: 0, min: 0 },
+    discountType: { type: String, enum: ["percent", "fixed"], default: "percent" },
+    discountValue: { type: Number, default: 0, min: 0 },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

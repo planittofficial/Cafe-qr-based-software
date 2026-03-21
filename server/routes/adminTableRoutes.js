@@ -7,6 +7,8 @@ router.use(requireAuth);
 router.use(requireRole(["cafe_admin", "super_admin"]));
 
 router.get("/", adminTableController.listTables);
+router.post("/", adminTableController.createTable);
 router.post("/generate", adminTableController.generateTables);
+router.delete("/:id", adminTableController.deleteTable);
 
 module.exports = router;

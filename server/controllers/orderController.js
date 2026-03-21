@@ -51,6 +51,18 @@ exports.listOrdersByCafe = async (req, res) => {
   }
 };
 
+exports.listOrdersByTable = async (req, res) => {
+  try {
+    const { cafeId, tableNumber } = req.params;
+    if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
+    if (!tableNumber) return res.status(400).json({ message: "tableNumber is required" });
+    const orders = await Order.find({ cafeId, tableNumber: Number(tableNumber) }).sort({ createdAt: -1 });
+    return res.json(orders);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
+
 exports.updateOrder = async (req, res) => {
   try {
     const { status } = req.body;
@@ -82,6 +94,7 @@ exports.updateOrder = async (req, res) => {
         { $set: { status: "free" } }
       );
     }
+
     return res.json(order);
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
