@@ -1,15 +1,29 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  BarChart,
+  Bar,
+} from "recharts";
 import { apiFetch, getApiBaseUrl } from "../../lib/api";
-import { authHeaders, getToken, getUser } from "../../lib/auth";
+import { authHeaders } from "../../lib/auth";
+import { useClientAuth } from "../../lib/useClientAuth";
 import { Button } from "../../components/ui/Button";
 import { Card, CardContent } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
+import { StaffShell } from "../../components/StaffShell";
+import SoundControl from "../../components/SoundControl";
+import { AppLoading } from "../../components/AppLoading";
 
 export default function SuperAdminPage() {
-  const token = getToken();
-  const user = getUser();
+  const { token, user, ready: authReady } = useClientAuth();
   const role = user?.role || "";
 
   const [cafes, setCafes] = useState([]);
@@ -19,6 +33,11 @@ export default function SuperAdminPage() {
   const [overview, setOverview] = useState([]);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState("");
+
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState("");
+  const [analyticsCafeId, setAnalyticsCafeId] = useState("");
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -62,7 +81,7 @@ export default function SuperAdminPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await apiFetch("/api/cafe");
+      const data = await apiFetch("/api/cafe", { headers: { ...authHeaders() } });
       setCafes(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(e.message || "Failed to fetch cafes");
@@ -81,6 +100,21 @@ export default function SuperAdminPage() {
       setOverviewError(e.message || "Failed to load overview");
     } finally {
       setOverviewLoading(false);
+    }
+  };
+
+  const loadAnalytics = async () => {
+    setAnalyticsLoading(true);
+    setAnalyticsError("");
+    try {
+      const qs = new URLSearchParams({ days: "30" });
+      if (analyticsCafeId) qs.set("cafeId", analyticsCafeId);
+      const data = await apiFetch(`/api/superadmin/analytics?${qs.toString()}`, { headers: { ...authHeaders() } });
+      setAnalytics(data);
+    } catch (e) {
+      setAnalyticsError(e.message || "Failed to load analytics");
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
 
@@ -137,16 +171,20 @@ export default function SuperAdminPage() {
   };
 
   useEffect(() => {
+    if (!authReady) return;
     if (!token || (role && role !== "super_admin")) {
       window.location.href = "/super-admin/login";
       return;
     }
-    if (typeof window !== "undefined") {
-      setBaseCustomerUrl(window.location.origin);
-    }
+    setBaseCustomerUrl(typeof window !== "undefined" ? window.location.origin : "");
     load();
     loadOverview();
-  }, []);
+  }, [authReady, token, role]);
+
+  useEffect(() => {
+    loadAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyticsCafeId]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -169,6 +207,7 @@ export default function SuperAdminPage() {
     try {
       const createdCafe = await apiFetch("/api/cafe", {
         method: "POST",
+        headers: { ...authHeaders() },
         body: JSON.stringify({
           name,
           address,
@@ -305,33 +344,111 @@ export default function SuperAdminPage() {
     }
   };
 
+  if (!authReady) {
+    return (
+      <StaffShell title="Super Admin" subtitle="Loading session…" contentClassName="mx-auto max-w-6xl">
+        <AppLoading label="Loading" />
+      </StaffShell>
+    );
+  }
+
   return (
-    <main className="min-h-screen page-shell relative overflow-hidden px-6 py-10">
-      <div className="pointer-events-none absolute inset-0 bg-grid opacity-30" />
-      <div className="pointer-events-none absolute -top-24 -right-20 h-64 w-64 rounded-full bg-orange-300/30 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 -left-24 h-72 w-72 rounded-full bg-emerald-300/20 blur-3xl" />
-      <div className="relative mx-auto max-w-6xl space-y-8">
-        <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 shadow">
-              Super Admin Console
-            </div>
-            <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold text-slate-900">Cafe fleet overview</h1>
-            <p className="mt-2 text-sm text-slate-600">Create cafes and monitor key performance metrics.</p>
-          </div>
+    <StaffShell
+      staffNav={{
+        variant: "super_admin",
+        onRefresh: () => {
+          load();
+          loadOverview();
+        },
+      }}
+      badge={
+        <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 shadow">
+          Super Admin Console
+        </span>
+      }
+      title="Cafe fleet overview"
+      subtitle="Create cafes and monitor key performance metrics."
+      actions={
+        <>
+          <SoundControl />
           <div className="flex gap-4">
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-5 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-5 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{totals.totalCafes}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Cafes</div>
             </div>
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-5 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-5 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{totals.totalTables}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Tables</div>
             </div>
           </div>
-        </header>
-
+        </>
+      }
+      contentClassName="mx-auto max-w-6xl space-y-8"
+    >
         {error && <div className="text-red-700 font-semibold">{error}</div>}
+
+        <Card className="border border-orange-100 shadow-xl">
+          <CardContent>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold">Revenue &amp; orders</h2>
+                <p className="text-sm text-slate-600 mt-1">Last {analytics?.rangeDays || 30} days</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={analyticsCafeId}
+                  onChange={(e) => setAnalyticsCafeId(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">All venues</option>
+                  {cafes.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <Button variant="outline" onClick={loadAnalytics} disabled={analyticsLoading}>
+                  Refresh
+                </Button>
+              </div>
+            </div>
+            {analyticsError && <div className="mt-3 text-red-700 font-semibold">{analyticsError}</div>}
+            {analyticsLoading ? (
+              <div className="mt-6 text-slate-600">Loading charts…</div>
+            ) : analytics ? (
+              <div className="mt-6 space-y-6">
+                <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-700">Paid revenue (period)</div>
+                  <div className="text-2xl font-extrabold text-slate-900">
+                    INR {Number(analytics.paidRevenueTotal || 0).toFixed(0)}
+                  </div>
+                </div>
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={(analytics.byDay || []).map((d) => ({ ...d, day: d._id }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="revenue" stroke="#ea580c" strokeWidth={2} dot={false} name="Revenue" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.statusBreakdown || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="_id" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#0d9488" name="Orders" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-6">
           <Card className="border border-orange-100 shadow-xl">
@@ -610,7 +727,6 @@ export default function SuperAdminPage() {
             </div>
           )}
         </section>
-      </div>
-    </main>
+    </StaffShell>
   );
 }

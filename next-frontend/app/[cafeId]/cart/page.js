@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
@@ -7,7 +7,13 @@ import { Button } from "../../../components/ui/Button";
 import { ArrowLeft, Minus, Plus, Sparkles, Receipt } from "lucide-react";
 import { Card, CardContent } from "../../../components/ui/Card";
 import CustomerBottomNav from "../../../components/CustomerBottomNav";
+import { CustomerShell } from "../../../components/CustomerShell";
+import SoundControl from "../../../components/SoundControl";
 import { Input, Textarea } from "../../../components/ui/Input";
+import { playSoftError, playSuccess } from "../../../lib/sounds";
+import { getOrCreateVisitId } from "../../../lib/visitSession";
+import { setCssVarsFromCafe } from "../../../lib/theme";
+import { formatIndianMobileInput, normalizeIndianMobile } from "../../../lib/phoneIn";
 
 function cartKey(cafeId, tableNumber) {
   return `cart:${cafeId}:table:${tableNumber}`;
@@ -38,6 +44,11 @@ export default function CartPage() {
   const [error, setError] = useState("");
   const [showDetails, setShowDetails] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+
+  useEffect(() => {
+    if (cafeInfo) setCssVarsFromCafe(cafeInfo);
+  }, [cafeInfo]);
 
   useEffect(() => {
     if (!cafeId || !tableNumber) return;
@@ -53,7 +64,7 @@ export default function CartPage() {
       const parsed = raw ? JSON.parse(raw) : null;
       setCustomer(parsed);
       setCustomerName(parsed?.name || "");
-      setCustomerPhone(parsed?.phone || "");
+      setCustomerPhone(formatIndianMobileInput(parsed?.phone || ""));
     } catch {
       setCustomer(null);
       setCustomerName("");
@@ -61,6 +72,23 @@ export default function CartPage() {
     }
     setHydrated(true);
   }, [cafeId, tableNumber]);
+
+  useEffect(() => {
+    if (!hydrated || !cafeId) return;
+    (async () => {
+      try {
+        const me = await apiFetch("/api/customers/me");
+        if (me?.name) setCustomerName((prev) => (prev && prev.trim() ? prev : me.name));
+        if (me?.phone) {
+          setCustomerPhone((prev) =>
+            prev && prev.trim() ? prev : formatIndianMobileInput(me.phone)
+          );
+        }
+      } catch {
+        // no saved session
+      }
+    })();
+  }, [hydrated, cafeId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,32 +138,78 @@ export default function CartPage() {
   const placeOrder = async () => {
     if (!cafeId || !tableNumber) return;
     const nameToUse = customerName?.trim();
-    const phoneToUse = customerPhone?.trim();
-    if (!nameToUse || !phoneToUse) {
+    const phoneDigits = normalizeIndianMobile(customerPhone);
+    if (!nameToUse || !customerPhone?.trim()) {
+      setShowDetails(true);
+      setError("");
+      setPhoneError("");
+      return;
+    }
+    if (!phoneDigits) {
+      setPhoneError("Enter a valid 10-digit Indian mobile number (starts with 6–9).");
       setShowDetails(true);
       setError("");
       return;
     }
+    setPhoneError("");
     if (cart.length === 0) return;
 
+    setShowDetails(false);
     setPlacing(true);
     setError("");
     try {
+      const visitId = getOrCreateVisitId(cafeId, tableNumber);
+      if (!visitId) {
+        setError("Could not start visit session. Please refresh the page.");
+        setPlacing(false);
+        return;
+      }
+
+      let customerLat;
+      let customerLng;
+      const needGeo =
+        cafeInfo &&
+        typeof cafeInfo.latitude === "number" &&
+        typeof cafeInfo.longitude === "number" &&
+        Number(cafeInfo.serviceRadiusMeters) > 0;
+      if (needGeo) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            if (typeof navigator === "undefined" || !navigator.geolocation) {
+              reject(new Error("Location not available"));
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 12000, enableHighAccuracy: true });
+          });
+          customerLat = pos.coords.latitude;
+          customerLng = pos.coords.longitude;
+        } catch {
+          setError("Location access is required to order from this venue. Enable GPS and try again.");
+          setPlacing(false);
+          return;
+        }
+      }
+
       const order = await apiFetch("/api/orders", {
         method: "POST",
         body: JSON.stringify({
           cafeId,
           tableNumber,
+          visitId,
           customerName: nameToUse,
-          phone: phoneToUse,
+          phone: phoneDigits,
+          customerLat,
+          customerLng,
           items: cart.map((x) => ({ name: x.name, price: x.price, qty: x.qty, menuItemId: x._id })),
         }),
       });
 
       localStorage.removeItem(cartKey(cafeId, tableNumber));
       setCart([]);
+      playSuccess();
       router.replace(`/${cafeId}/order/${order._id}?table=${tableNumber}`);
     } catch (e) {
+      playSoftError();
       setError(e.message || "Failed to place order");
     } finally {
       setPlacing(false);
@@ -143,13 +217,14 @@ export default function CartPage() {
   };
 
   return (
-    <main className="min-h-screen customer-shell pb-36">
+    <CustomerShell bottomInsetClass="pb-36">
+    <main className="min-h-screen">
       <div className="sticky top-0 z-20 border-b border-white/60 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
-          <Button variant="outline" className="h-9 w-9 rounded-full p-0" onClick={() => router.push(`/${cafeId}/menu?table=${tableNumber}`)}>
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2 px-4 py-3">
+          <Button variant="outline" className="h-9 w-9 shrink-0 rounded-full p-0" onClick={() => router.push(`/${cafeId}/menu?table=${tableNumber}`)}>
             <ArrowLeft size={18} className="text-slate-900" />
           </Button>
-          <div className="text-center">
+          <div className="min-w-0 flex-1 text-center">
             <div className="text-xs text-slate-500">Table {tableNumber || "?"}</div>
             <div className="text-sm font-semibold text-slate-900">Review your order</div>
             <div className="mt-2 flex items-center justify-center">
@@ -162,7 +237,9 @@ export default function CartPage() {
               </div>
             </div>
           </div>
-          <div className="h-9 w-9" />
+          <div className="flex shrink-0 justify-end">
+            <SoundControl />
+          </div>
         </div>
       </div>
 
@@ -253,8 +330,23 @@ export default function CartPage() {
             <div className="mt-1 text-xs text-slate-500">We’ll attach this to your order.</div>
 
             <div className="mt-4 grid gap-3">
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Your name" />
-              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone number (e.g. +91XXXXXXXXXX)" />
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Your name" autoComplete="name" />
+              <div>
+                <Input
+                  value={customerPhone}
+                  onChange={(e) => {
+                    setCustomerPhone(formatIndianMobileInput(e.target.value));
+                    setPhoneError("");
+                  }}
+                  placeholder="10-digit mobile"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  maxLength={10}
+                  className={phoneError ? "border-red-400" : ""}
+                />
+                <p className="mt-1 text-[11px] text-slate-500">Indian mobile: 10 digits, starting with 6–9.</p>
+                {phoneError && <div className="mt-1 text-xs font-semibold text-red-600">{phoneError}</div>}
+              </div>
             </div>
 
             {error && <div className="mt-3 text-sm font-semibold text-red-700">{error}</div>}
@@ -263,14 +355,7 @@ export default function CartPage() {
               <Button variant="outline" className="flex-1" onClick={() => setShowDetails(false)} disabled={placing}>
                 Cancel
               </Button>
-              <Button
-                className="flex-1"
-                onClick={async () => {
-                  setShowDetails(false);
-                  await placeOrder();
-                }}
-                disabled={placing}
-              >
+              <Button className="flex-1" onClick={() => placeOrder()} disabled={placing}>
                 Continue
               </Button>
             </div>
@@ -280,5 +365,6 @@ export default function CartPage() {
 
       <CustomerBottomNav cafeId={cafeId} />
     </main>
+    </CustomerShell>
   );
 }

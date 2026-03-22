@@ -1,19 +1,39 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { ArrowLeft, Leaf, Plus, ShoppingCart, Star, Search, MapPin, Sparkles, Clock } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  ArrowLeft,
+  Leaf,
+  Plus,
+  ShoppingCart,
+  Star,
+  Search,
+  MapPin,
+  Sparkles,
+  Clock,
+  Heart,
+} from "lucide-react";
 import { apiFetch } from "../../../lib/api";
+import { setCssVarsFromCafe } from "../../../lib/theme";
+import { playAddToCart } from "../../../lib/sounds";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardContent } from "../../../components/ui/Card";
 import CustomerBottomNav from "../../../components/CustomerBottomNav";
+import { CustomerShell } from "../../../components/CustomerShell";
+import SoundControl from "../../../components/SoundControl";
 import { Input } from "../../../components/ui/Input";
+import { useMounted } from "../../../lib/useMounted";
+import { AppLoading } from "../../../components/AppLoading";
+import { MenuFloatingCart } from "../../../components/menu/MenuFloatingCart";
 
 function cartKey(cafeId, tableNumber) {
   return `cart:${cafeId}:table:${tableNumber}`;
 }
 
 export default function MenuPage() {
+  const mounted = useMounted();
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -32,6 +52,9 @@ export default function MenuPage() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [typeFilter, setTypeFilter] = useState("all");
   const [query, setQuery] = useState("");
+  /** guest = not signed in; ok = signed in (may have zero favorites) */
+  const [favoritesState, setFavoritesState] = useState({ status: "loading", items: [] });
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     if (!cafeId || !tableNumber) return;
@@ -89,7 +112,41 @@ export default function MenuPage() {
     };
   }, [cafeId]);
 
+  useEffect(() => {
+    if (cafe) setCssVarsFromCafe(cafe);
+  }, [cafe]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFavorites() {
+      if (!cafeId) return;
+      try {
+        const data = await apiFetch(`/api/customers/me/favorites?cafeId=${cafeId}`);
+        if (!cancelled) {
+          setFavoritesState({
+            status: "ok",
+            items: Array.isArray(data?.items) ? data.items : [],
+          });
+        }
+      } catch (e) {
+        const msg = e?.message || "";
+        if (!cancelled) {
+          if (msg.includes("401") || msg.includes("Not signed")) {
+            setFavoritesState({ status: "guest", items: [] });
+          } else {
+            setFavoritesState({ status: "error", items: [] });
+          }
+        }
+      }
+    }
+    loadFavorites();
+    return () => {
+      cancelled = true;
+    };
+  }, [cafeId]);
+
   const add = (item) => {
+    playAddToCart();
     setCart((prev) => {
       const found = prev.find((x) => x._id === item._id);
       const next = found
@@ -139,19 +196,50 @@ export default function MenuPage() {
     : filteredByType;
   const specials = items.filter((it) => it.isSpecial);
 
+  const favoriteRows = useMemo(() => {
+    const favorites = favoritesState.items;
+    if (!favorites.length || !items.length) return [];
+    return favorites
+      .map((f) => {
+        const byId = f.menuItemId
+          ? items.find((it) => String(it._id) === String(f.menuItemId))
+          : null;
+        const menuItem =
+          byId ||
+          items.find((it) => String(it.name || "").trim().toLowerCase() === String(f.name || "").trim().toLowerCase());
+        if (!menuItem) return null;
+        return { ...f, menuItem };
+      })
+      .filter(Boolean);
+  }, [favoritesState.items, items]);
+
   const openCart = () => {
     if (!tableNumber) return;
     router.push(`/${cafeId}/cart?table=${tableNumber}`);
   };
 
+  const listItemVariants =
+    mounted && !reducedMotion
+      ? { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }
+      : { hidden: { opacity: 0 }, show: { opacity: 1 } };
+
+  const listContainerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: reducedMotion ? 0 : 0.05 },
+    },
+  };
+
   return (
-    <main className="min-h-screen customer-shell pb-36">
-      <div className="sticky top-0 z-20 border-b border-white/60 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
-          <Button variant="outline" className="h-9 w-9 rounded-full p-0" onClick={() => router.back()}>
+    <CustomerShell bottomInsetClass="pb-36" className="menu-page-surface">
+      <main className="min-h-screen">
+      <div className="sticky top-0 z-20 border-b border-orange-100/50 bg-white/90 shadow-sm shadow-orange-100/30 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2 px-4 py-3">
+          <Button variant="outline" className="h-9 w-9 shrink-0 rounded-full p-0" onClick={() => router.back()}>
             <ArrowLeft size={18} className="text-slate-900" />
           </Button>
-          <div className="flex-1 px-3">
+          <div className="min-w-0 flex-1 px-2">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-widest text-slate-400">Table</div>
@@ -166,14 +254,17 @@ export default function MenuPage() {
               <span>{cafe?.address || "Freshly brewed, made to order."}</span>
             </div>
           </div>
-          <Button variant="outline" className="relative h-9 w-9 rounded-full p-0" onClick={openCart}>
-            <ShoppingCart size={18} className="text-slate-900" />
-            {cartCount > 0 && (
-              <span className="absolute -right-1 -top-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {cartCount}
-              </span>
-            )}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <SoundControl />
+            <Button variant="outline" className="relative h-9 w-9 rounded-full p-0" onClick={openCart}>
+              <ShoppingCart size={18} className="text-slate-900" />
+              {cartCount > 0 && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  {cartCount}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -279,16 +370,83 @@ export default function MenuPage() {
           </button>
         </div>
 
+        {!loading && !error && favoritesState.status === "ok" && favoriteRows.length > 0 && (
+          <motion.section
+            initial={mounted && !reducedMotion ? { opacity: 0, y: 8 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.35 }}
+            className="mt-5 rounded-3xl border border-amber-200/80 bg-gradient-to-br from-amber-50/95 via-white to-orange-50/90 p-4 shadow-card"
+          >
+            <div className="flex items-center gap-2 text-sm font-bold text-amber-900">
+              <Heart className="text-orange-500" size={20} aria-hidden />
+              Order again — your favorites
+            </div>
+            <p className="mt-1 text-xs text-amber-900/70">
+              Based on dishes you&apos;ve enjoyed here before. Larger cards for easy tapping.
+            </p>
+            <div className="mt-4 flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+              {favoriteRows.map(({ menuItem: it, totalQty }) => {
+                const inCart = cart.find((x) => x._id === it._id);
+                const available = it.isAvailable !== false;
+                return (
+                  <div
+                    key={it._id}
+                    className="min-w-[200px] max-w-[220px] shrink-0 rounded-2xl border border-white/80 bg-white p-3 shadow-md"
+                  >
+                    <div className="flex gap-3">
+                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                        {it.image ? (
+                          <img src={it.image} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-lg font-bold text-slate-300">
+                            {it.name?.[0] || "?"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 text-base font-semibold leading-tight text-slate-900">{it.name}</div>
+                        <div className="mt-1 text-[11px] text-slate-500">Ordered {totalQty}x total</div>
+                        <div className="mt-1 text-sm font-bold text-slate-900">INR {Number(it.price || 0).toFixed(0)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      {!inCart ? (
+                        <Button
+                          size="lg"
+                          className="w-full rounded-2xl"
+                          onClick={() => add(it)}
+                          disabled={!available}
+                        >
+                          <Plus size={18} /> Add to cart
+                        </Button>
+                      ) : (
+                        <div className="flex items-center justify-center gap-3">
+                          <Button variant="outline" onClick={() => remove(it)} className="h-12 w-12 rounded-2xl p-0 text-xl font-bold">
+                            -
+                          </Button>
+                          <div className="min-w-8 text-center text-lg font-bold">{inCart.qty}</div>
+                          <Button variant="outline" onClick={() => add(it)} className="h-12 w-12 rounded-2xl p-0 text-xl font-bold">
+                            +
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.section>
+        )}
+
+        {!loading && !error && favoritesState.status === "ok" && favoriteRows.length === 0 && (
+          <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/50 px-4 py-3 text-center text-xs text-slate-500">
+            Your favorites will appear here after your first completed order at this café.
+          </p>
+        )}
+
         {loading ? (
-          <div className="mt-6 space-y-3">
-            {Array.from({ length: 4 }).map((_, idx) => (
-              <div key={idx} className="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-sm">
-                <div className="h-32 w-full rounded-2xl skeleton" />
-                <div className="mt-4 h-4 w-3/4 rounded-full skeleton" />
-                <div className="mt-2 h-3 w-1/2 rounded-full skeleton" />
-                <div className="mt-4 h-9 w-24 rounded-full skeleton" />
-              </div>
-            ))}
+          <div className="mt-8">
+            <AppLoading label="Fetching menu" />
           </div>
         ) : error ? (
           <div className="mt-6 text-sm font-semibold text-red-700">{error}</div>
@@ -340,13 +498,20 @@ export default function MenuPage() {
                 No dishes match your search. Try another keyword or category.
               </div>
             ) : (
-              filteredItems.map((it) => {
+              <motion.div
+                className="space-y-4"
+                variants={listContainerVariants}
+                initial="hidden"
+                animate="show"
+              >
+              {filteredItems.map((it) => {
                 const inCart = cart.find((x) => x._id === it._id);
                 const available = it.isAvailable !== false;
                 const isVeg = it.type === "veg";
                 const isNonVeg = it.type === "non-veg";
                 return (
-                  <Card key={it._id} className="overflow-hidden rounded-3xl border border-slate-100 shadow-sm">
+                  <motion.div key={it._id} variants={listItemVariants} transition={{ duration: 0.22 }}>
+                  <Card className="overflow-hidden rounded-3xl border border-slate-100 shadow-sm">
                     <CardContent className="p-0">
                       <div className="relative">
                         {it.image ? (
@@ -416,27 +581,18 @@ export default function MenuPage() {
                       </div>
                     </CardContent>
                   </Card>
+                  </motion.div>
                 );
-              })
+              })}
+              </motion.div>
             )}
           </div>
         )}
       </div>
 
-      {cartCount > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-20 w-[min(480px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-orange-100 bg-white p-4 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-slate-500">{cartCount} item(s)</div>
-              <div className="text-lg font-extrabold text-slate-900">INR {total.toFixed(0)}</div>
-            </div>
-            <Button onClick={openCart} className="rounded-full px-5">
-              View Cart
-            </Button>
-          </div>
-        </div>
-      )}
+      <MenuFloatingCart cartCount={cartCount} total={total} onViewCart={openCart} />
       <CustomerBottomNav cafeId={cafeId} />
     </main>
+    </CustomerShell>
   );
 }

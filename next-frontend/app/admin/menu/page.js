@@ -1,12 +1,18 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, getApiBaseUrl } from "../../../lib/api";
-import { authHeaders, clearToken, getToken, getUser } from "../../../lib/auth";
+import { isOrderInLocalToday, ordersTodayQueryString } from "../../../lib/staffOrderRange";
+import Link from "next/link";
+import { authHeaders, getToken } from "../../../lib/auth";
+import { useClientAuth } from "../../../lib/useClientAuth";
 import { connectCafeSocket } from "../../../lib/socket";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardContent } from "../../../components/ui/Card";
 import { Input, Textarea } from "../../../components/ui/Input";
+import { StaffShell } from "../../../components/StaffShell";
+import SoundControl from "../../../components/SoundControl";
+import { AppLoading } from "../../../components/AppLoading";
 
 function upsertById(list, item) {
   const idx = list.findIndex((x) => x._id === item._id);
@@ -17,7 +23,7 @@ function upsertById(list, item) {
 }
 
 export default function AdminMenuPage() {
-  const user = getUser();
+  const { user, ready: authReady } = useClientAuth();
   const role = user?.role;
 
   const [items, setItems] = useState([]);
@@ -123,10 +129,7 @@ export default function AdminMenuPage() {
     return { total, available, categories };
   }, [items]);
 
-  const baseCustomerUrl = useMemo(
-    () => (typeof window !== "undefined" ? window.location.origin : ""),
-    []
-  );
+  const [baseCustomerUrl, setBaseCustomerUrl] = useState("");
 
   const [tables, setTables] = useState([]);
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -158,6 +161,11 @@ export default function AdminMenuPage() {
     taxPercent: "",
     discountType: "percent",
     discountValue: "",
+    primaryColor: "",
+    accentColor: "",
+    latitude: "",
+    longitude: "",
+    serviceRadiusMeters: "",
   });
   const [cafeLoading, setCafeLoading] = useState(false);
   const [cafeError, setCafeError] = useState("");
@@ -355,6 +363,12 @@ export default function AdminMenuPage() {
             : typeof data?.discountPercent === "number"
               ? String(data.discountPercent)
               : "",
+        primaryColor: data?.primaryColor || "",
+        accentColor: data?.accentColor || "",
+        latitude: typeof data?.latitude === "number" ? String(data.latitude) : "",
+        longitude: typeof data?.longitude === "number" ? String(data.longitude) : "",
+        serviceRadiusMeters:
+          typeof data?.serviceRadiusMeters === "number" ? String(data.serviceRadiusMeters) : "",
       });
     } catch (e) {
       setCafeError(e.message || "Failed to load cafe");
@@ -365,10 +379,14 @@ export default function AdminMenuPage() {
 
   const loadOrders = async () => {
     if (!tablesCafeId) return;
+    if (!requireLogin(false)) return;
     setOrdersLoading(true);
     setOrdersError("");
     try {
-      const data = await apiFetch(`/api/orders/${tablesCafeId}`);
+      const qs = ordersTodayQueryString();
+      const data = await apiFetch(`/api/orders/${tablesCafeId}?${qs}`, {
+        headers: { ...authHeaders() },
+      });
       setOrders(Array.isArray(data) ? data : []);
     } catch (e) {
       setOrdersError(e.message || "Failed to load orders");
@@ -396,6 +414,11 @@ export default function AdminMenuPage() {
         taxPercent: cafeForm.taxPercent === "" ? 0 : Number(cafeForm.taxPercent),
         discountType: cafeForm.discountType || "percent",
         discountValue: cafeForm.discountValue === "" ? 0 : Number(cafeForm.discountValue),
+        primaryColor: cafeForm.primaryColor,
+        accentColor: cafeForm.accentColor,
+        latitude: cafeForm.latitude === "" ? null : Number(cafeForm.latitude),
+        longitude: cafeForm.longitude === "" ? null : Number(cafeForm.longitude),
+        serviceRadiusMeters: cafeForm.serviceRadiusMeters === "" ? 0 : Number(cafeForm.serviceRadiusMeters),
       };
       if (role === "super_admin") body.cafeId = cafeIdForAdmin;
       const updated = await apiFetch("/api/admin/cafe", {
@@ -535,8 +558,24 @@ export default function AdminMenuPage() {
   };
 
   useEffect(() => {
-    load();
+    setBaseCustomerUrl(typeof window !== "undefined" ? window.location.origin : "");
   }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+    load();
+  }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!getToken()) {
+      window.location.href = "/admin/login";
+      return;
+    }
+    if (role && role !== "cafe_admin" && role !== "super_admin") {
+      window.location.href = "/admin/login";
+    }
+  }, [authReady, role]);
 
   useEffect(() => {
     if (tablesCafeId) loadTables();
@@ -555,7 +594,7 @@ export default function AdminMenuPage() {
   }, [tablesCafeId]);
 
   useEffect(() => {
-    if (!tablesCafeId) return;
+    if (!authReady || !tablesCafeId) return;
     const socket = connectCafeSocket(tablesCafeId);
     setOrdersSocket("connecting");
 
@@ -564,6 +603,7 @@ export default function AdminMenuPage() {
 
     const onOrder = (payload) => {
       if (!payload?._id) return;
+      if (!isOrderInLocalToday(payload)) return;
       setOrders((prev) => {
         const idx = prev.findIndex((o) => o._id === payload._id);
         if (idx === -1) return [payload, ...prev];
@@ -585,7 +625,7 @@ export default function AdminMenuPage() {
       socket.off("ORDER_PAID", onOrder);
       socket.disconnect();
     };
-  }, [tablesCafeId]);
+  }, [authReady, tablesCafeId]);
 
   const createItem = async (e) => {
     e.preventDefault();
@@ -725,51 +765,50 @@ export default function AdminMenuPage() {
     }
   };
 
+  if (!authReady) {
+    return (
+      <StaffShell title="Menu management" subtitle="Loading session…" contentClassName="mx-auto max-w-6xl">
+        <AppLoading label="Loading" />
+      </StaffShell>
+    );
+  }
+
   return (
-    <main className="min-h-screen page-shell relative overflow-hidden px-6 py-10">
-      <div className="pointer-events-none absolute inset-0 bg-grid opacity-30" />
-      <div className="pointer-events-none absolute -top-24 -right-20 h-64 w-64 rounded-full bg-orange-300/30 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 -left-24 h-72 w-72 rounded-full bg-emerald-300/20 blur-3xl" />
-      <div className="relative mx-auto max-w-6xl space-y-8">
-        <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 shadow">
-              Admin Menu Console
-            </div>
-            <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold text-slate-900">Menu management</h1>
-            <p className="mt-2 text-sm text-slate-600">Create, update, and publish dishes across your cafe.</p>
-          </div>
+    <StaffShell
+      staffNav={{
+        variant: role === "super_admin" ? "super_admin" : "admin",
+        onRefresh: () => load(false),
+      }}
+      badge={
+        <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 shadow">
+          Admin Menu Console
+        </span>
+      }
+      title="Menu management"
+      subtitle="Create, update, and publish dishes across your cafe."
+      actions={
+        <>
+          <SoundControl />
           <div className="flex flex-wrap gap-3">
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.total}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Items</div>
             </div>
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.available}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Available</div>
             </div>
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.categories}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Categories</div>
             </div>
           </div>
-        </header>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={() => load(false)} disabled={loading}>Refresh</Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              clearToken();
-              window.location.href = "/admin/login";
-            }}
-          >
-            Logout
-          </Button>
-        </div>
-
+        </>
+      }
+      contentClassName="mx-auto max-w-6xl space-y-8"
+    >
         {role === "super_admin" && (
-          <Card className="border border-orange-100 shadow-xl">
+          <Card id="admin-pick-cafe" className="border border-orange-100 shadow-xl">
             <CardContent>
               <div className="font-bold">Super Admin: choose a cafeId</div>
               <div className="text-sm text-gray-600 mt-1">Provide a cafeId to scope listing and writes.</div>
@@ -781,7 +820,7 @@ export default function AdminMenuPage() {
           </Card>
         )}
 
-        <Card className="border border-orange-100 shadow-xl">
+        <Card id="admin-branding" className="border border-orange-100 shadow-xl">
           <CardContent>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -860,6 +899,41 @@ export default function AdminMenuPage() {
                   min={0}
                   step="0.01"
                 />
+                <Input
+                  value={cafeForm.primaryColor}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, primaryColor: e.target.value }))}
+                  placeholder="Primary color (hex e.g. #ea580c)"
+                />
+                <Input
+                  value={cafeForm.accentColor}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, accentColor: e.target.value }))}
+                  placeholder="Accent color (hex e.g. #fbbf24)"
+                />
+                <Input
+                  value={cafeForm.latitude}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, latitude: e.target.value }))}
+                  placeholder="Venue latitude (geofence)"
+                  type="number"
+                  step="any"
+                />
+                <Input
+                  value={cafeForm.longitude}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, longitude: e.target.value }))}
+                  placeholder="Venue longitude (geofence)"
+                  type="number"
+                  step="any"
+                />
+                <Input
+                  value={cafeForm.serviceRadiusMeters}
+                  onChange={(e) => setCafeForm((p) => ({ ...p, serviceRadiusMeters: e.target.value }))}
+                  placeholder="Service radius (meters, 0 = off)"
+                  type="number"
+                  min={0}
+                  step="1"
+                />
+                <div className="md:col-span-2 text-xs text-slate-500">
+                  Set latitude, longitude, and a radius &gt; 0 to restrict orders to guests within that distance.
+                </div>
                 <div className="md:col-span-2">
                   <Button className="w-full" type="submit" disabled={cafeLoading}>
                     {cafeLoading ? "Saving..." : "Save branding"}
@@ -873,7 +947,7 @@ export default function AdminMenuPage() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-100 shadow-xl">
+        <Card id="admin-live-orders" className="border border-orange-100 shadow-xl">
           <CardContent>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -882,9 +956,17 @@ export default function AdminMenuPage() {
                   Track customer orders in real time. Socket: <span className="font-semibold">{ordersSocket}</span>
                 </div>
               </div>
-              <Button variant="outline" onClick={loadOrders} disabled={ordersLoading || !tablesCafeId}>
-                Refresh orders
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={loadOrders} disabled={ordersLoading || !tablesCafeId}>
+                  Refresh orders
+                </Button>
+                <Link
+                  href="/admin/history"
+                  className="inline-flex items-center justify-center rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-800 shadow-sm hover:bg-orange-50"
+                >
+                  History
+                </Link>
+              </div>
             </div>
 
             {ordersError && <div className="mt-3 text-red-700 font-semibold">{ordersError}</div>}
@@ -925,7 +1007,7 @@ export default function AdminMenuPage() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-100 shadow-xl">
+        <Card id="admin-tables" className="border border-orange-100 shadow-xl">
           <CardContent>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1034,7 +1116,7 @@ export default function AdminMenuPage() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-100 shadow-xl">
+        <Card id="admin-staff-create" className="border border-orange-100 shadow-xl">
           <CardContent>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1084,7 +1166,7 @@ export default function AdminMenuPage() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-100 shadow-xl">
+        <Card id="admin-staff-list" className="border border-orange-100 shadow-xl">
           <CardContent>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1134,7 +1216,7 @@ export default function AdminMenuPage() {
 
         {error && <div className="text-red-700 font-semibold">{error}</div>}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-6">
+        <div id="admin-menu-editor" className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-6">
           <Card className="border border-orange-100 shadow-xl">
             <CardContent>
               <h2 className="text-xl font-bold mb-4">Add new item</h2>
@@ -1295,7 +1377,6 @@ export default function AdminMenuPage() {
             )}
           </div>
         </div>
-      </div>
-    </main>
+    </StaffShell>
   );
 }

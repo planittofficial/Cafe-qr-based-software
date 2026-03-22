@@ -1,7 +1,8 @@
-export function Card({ className = "", ...props }) {
+export function Card({ className = "", elevated = false, ...props }) {
+  const shadow = elevated ? "shadow-luxe" : "shadow-card";
   return (
     <div
-      className={`rounded-3xl border border-white/60 bg-white/90 shadow-lg shadow-slate-200/60 backdrop-blur ${className}`}
+      className={`rounded-3xl border border-white/60 bg-white/90 ${shadow} backdrop-blur ${className}`}
       {...props}
     />
   );

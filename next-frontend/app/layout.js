@@ -1,8 +1,9 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "QRDine",
-  description: "Multi-tenant QR ordering PWA",
+  title: "Coffee Culture — QRDine",
+  description:
+    "Explore our coffee house: craft, menu preview, and in-café QR ordering. Browse online — order only at the table.",
 };
 
 export default function RootLayout({ children }) {

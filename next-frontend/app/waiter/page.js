@@ -1,12 +1,22 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiFetch } from "../../lib/api";
-import { authHeaders, getToken, getUser } from "../../lib/auth";
+import { isOrderInLocalToday, ordersTodayQueryString } from "../../lib/staffOrderRange";
+import { filterWaiterLiveOrders, isWaiterLiveOrder } from "../../lib/staffOrderFilters";
+import { maybeNotifyBrowser, playWaiterReady, requestNotificationPermission } from "../../lib/sounds";
+import { motion, useReducedMotion } from "framer-motion";
+import { authHeaders } from "../../lib/auth";
+import { useClientAuth } from "../../lib/useClientAuth";
+import { useMounted } from "../../lib/useMounted";
+import { StaffShell } from "../../components/StaffShell";
+import SoundControl from "../../components/SoundControl";
 import { connectCafeSocket } from "../../lib/socket";
 import { Button } from "../../components/ui/Button";
 import { Card, CardContent } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
+import { AppLoading } from "../../components/AppLoading";
 
 function upsertOrder(list, order) {
   const idx = list.findIndex((x) => x._id === order._id);
@@ -17,9 +27,10 @@ function upsertOrder(list, order) {
 }
 
 export default function WaiterPage() {
-  const token = getToken();
-  const user = getUser();
+  const { token, user, ready: authReady } = useClientAuth();
   const role = user?.role || "";
+  const mounted = useMounted();
+  const reducedMotion = useReducedMotion();
 
   const [cafeIdOverride, setCafeIdOverride] = useState("");
   const cafeId = useMemo(() => cafeIdOverride || user?.cafeId || "", [cafeIdOverride, user?.cafeId]);
@@ -39,6 +50,7 @@ export default function WaiterPage() {
   }, [orders]);
 
   useEffect(() => {
+    if (!authReady) return;
     if (!token) {
       window.location.href = "/waiter/login";
       return;
@@ -46,15 +58,16 @@ export default function WaiterPage() {
     if (role && role !== "staff") {
       window.location.href = "/waiter/login";
     }
-  }, [token, role]);
+  }, [authReady, token, role]);
 
   const load = async () => {
     if (!cafeId) return;
     setLoading(true);
     setError("");
     try {
-      const list = await apiFetch(`/api/orders/${cafeId}`, { headers: { ...(token ? authHeaders() : {}) } });
-      setOrders(Array.isArray(list) ? list : []);
+      const qs = ordersTodayQueryString();
+      const list = await apiFetch(`/api/orders/${cafeId}?${qs}`, { headers: { ...(token ? authHeaders() : {}) } });
+      setOrders(filterWaiterLiveOrders(Array.isArray(list) ? list : []));
     } catch (e) {
       setError(e.message || "Failed to load orders");
     } finally {
@@ -92,12 +105,21 @@ export default function WaiterPage() {
     socket.on("connect", () => setSocketState("connected"));
     socket.on("disconnect", () => setSocketState("disconnected"));
 
-    const onOrder = (order) => setOrders((prev) => upsertOrder(prev, order));
+    const onOrder = (order) => {
+      if (!isOrderInLocalToday(order)) return;
+      if (!isWaiterLiveOrder(order)) {
+        setOrders((prev) => prev.filter((o) => o._id !== order._id));
+        return;
+      }
+      setOrders((prev) => upsertOrder(prev, order));
+    };
 
     socket.on("NEW_ORDER", onOrder);
     socket.on("ORDER_UPDATED", onOrder);
     socket.on("ORDER_READY", (order) => {
       onOrder(order);
+      playWaiterReady();
+      maybeNotifyBrowser("Order ready to serve", `Table ${order?.tableNumber}`);
       setReadyNotice({
         id: order?._id,
         tableNumber: order?.tableNumber,
@@ -125,7 +147,10 @@ export default function WaiterPage() {
         headers: { ...(token ? authHeaders() : {}) },
         body: JSON.stringify({ status }),
       });
-      setOrders((prev) => upsertOrder(prev, updated));
+      setOrders((prev) => {
+        const next = upsertOrder(prev, updated);
+        return filterWaiterLiveOrders(next);
+      });
     } catch (e) {
       setError(e.message || "Failed to update order");
     } finally {
@@ -148,15 +173,19 @@ export default function WaiterPage() {
 
     const orderIdShort = String(order._id).slice(-6);
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString() : new Date().toLocaleString();
-    const subtotal = Number(order.totalAmount || 0);
+    const lineSum = order.items.reduce((s, it) => s + Number(it.price || 0) * Number(it.qty || 0), 0);
+    const hasServerPricing = typeof order.subtotalAmount === "number" && typeof order.taxAmount === "number";
     const taxRate = Number(cafeInfo?.taxPercent || 0);
     const discountType = cafeInfo?.discountType || "percent";
     const discountValue = Number(cafeInfo?.discountValue || 0);
-    const tax = (subtotal * taxRate) / 100;
-    const discount = discountType === "fixed"
-      ? discountValue
-      : (subtotal * discountValue) / 100;
-    const total = Math.max(0, subtotal + tax - discount);
+    const subtotal = hasServerPricing ? Number(order.subtotalAmount) : Number(order.totalAmount || lineSum);
+    const tax = hasServerPricing ? Number(order.taxAmount) : (subtotal * taxRate) / 100;
+    const discount = hasServerPricing
+      ? Number(order.discountAmount || 0)
+      : discountType === "fixed"
+        ? discountValue
+        : (subtotal * discountValue) / 100;
+    const total = hasServerPricing ? Number(order.totalAmount || 0) : Math.max(0, subtotal + tax - discount);
     const cafeName = cafeInfo?.name || "QRDine";
     const cafeLogo = cafeInfo?.logoUrl || "";
 
@@ -237,72 +266,109 @@ export default function WaiterPage() {
     setTimeout(() => receiptWindow.print(), 250);
   };
 
+  const motionInitial = mounted && !reducedMotion ? { opacity: 0, y: 10 } : false;
+
+  if (!authReady) {
+    return (
+      <StaffShell title="Waiter dashboard" subtitle="Loading…">
+        <AppLoading label="Authenticating" />
+      </StaffShell>
+    );
+  }
+
   return (
-    <main className="min-h-screen page-shell relative overflow-hidden px-6 py-10">
-      <div className="pointer-events-none absolute inset-0 bg-grid opacity-30" />
-      <div className="pointer-events-none absolute -top-24 -right-20 h-64 w-64 rounded-full bg-orange-300/30 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 -left-24 h-72 w-72 rounded-full bg-emerald-300/20 blur-3xl" />
-      <div className="relative mx-auto max-w-6xl space-y-8">
-        <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 shadow">
-              Waiter Operations
-            </div>
-            <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold text-slate-900">Waiter dashboard</h1>
-            <p className="mt-2 text-sm text-slate-600">Track ready orders and update service status.</p>
-          </div>
+    <StaffShell
+      staffNav={{
+        variant: "waiter",
+        onRefresh: load,
+        historyHref: "/waiter/history",
+      }}
+      badge={
+        <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 shadow">
+          Waiter Operations
+        </span>
+      }
+      title="Waiter dashboard"
+      subtitle="Track ready orders and update service status."
+      actions={
+        <>
+          <SoundControl />
           <div className="flex flex-wrap gap-3">
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.total}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Total</div>
             </div>
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.ready}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Ready</div>
             </div>
-            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.served}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Served</div>
             </div>
           </div>
-        </header>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={load} disabled={!cafeId || loading}>Refresh</Button>
-          <div className="text-sm text-slate-600">Socket: <span className="font-semibold">{socketState}</span></div>
+        </>
+      }
+    >
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={load} disabled={!cafeId || loading}>
+          Refresh
+        </Button>
+        <div className="text-sm text-slate-600">
+          Socket: <span className="font-semibold">{socketState}</span>
         </div>
+        <Link
+          href="/waiter/history"
+          className="inline-flex items-center rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-800 shadow-sm hover:bg-orange-50"
+        >
+          History
+        </Link>
+        <Button type="button" variant="outline" className="text-xs" onClick={() => requestNotificationPermission()}>
+          Enable alerts
+        </Button>
+      </div>
 
-        {readyNotice && (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow">
-            Order ready for Table {readyNotice.tableNumber} {readyNotice.customerName ? `(${readyNotice.customerName})` : ""}
-          </div>
-        )}
+      {readyNotice && (
+        <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow">
+          Order ready for Table {readyNotice.tableNumber}{" "}
+          {readyNotice.customerName ? `(${readyNotice.customerName})` : ""}
+        </div>
+      )}
 
-        {!user?.cafeId && (
-          <Card className="border border-orange-100 shadow-xl">
-            <CardContent>
-              <div className="font-bold">Cafe scope</div>
-              <div className="text-sm text-gray-600 mt-1">Enter a cafeId to view orders.</div>
-              <div className="mt-3 flex gap-2">
-                <Input value={cafeIdOverride} onChange={(e) => setCafeIdOverride(e.target.value)} placeholder="cafeId (ObjectId)" />
-                <Button variant="outline" onClick={load} disabled={!cafeIdOverride || loading}>Load</Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      {!user?.cafeId && (
+        <Card className="mb-6 border border-orange-100 shadow-xl">
+          <CardContent>
+            <div className="font-bold">Cafe scope</div>
+            <div className="mt-1 text-sm text-gray-600">Enter a cafeId to view orders.</div>
+            <div className="mt-3 flex gap-2">
+              <Input
+                value={cafeIdOverride}
+                onChange={(e) => setCafeIdOverride(e.target.value)}
+                placeholder="cafeId (ObjectId)"
+              />
+              <Button variant="outline" onClick={load} disabled={!cafeIdOverride || loading}>
+                Load
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {error && <div className="text-red-700 font-semibold">{error}</div>}
+      {error && <div className="text-red-700 font-semibold">{error}</div>}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {orders.map((o) => (
-            <Card key={o._id} className="border border-orange-100 shadow-lg">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {orders.map((o) => (
+          <motion.div key={o._id} initial={motionInitial} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+            <Card className="border border-orange-100 shadow-lg">
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-extrabold text-slate-900">Table {o.tableNumber}</div>
-                    <div className="text-sm text-gray-600">{o.customerName} - {o.phone}</div>
+                    <div className="text-sm text-gray-600">
+                      {o.customerName} - {o.phone}
+                    </div>
                   </div>
-                  <div className="px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 font-semibold text-xs uppercase">
+                  <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold uppercase text-orange-700">
                     {o.status}
                   </div>
                 </div>
@@ -310,49 +376,64 @@ export default function WaiterPage() {
                 <div className="mt-3 space-y-1 text-sm">
                   {o.items.map((it, idx) => (
                     <div key={idx} className="flex justify-between">
-                      <span>{it.name} x {it.qty}</span>
+                      <span>
+                        {it.name} x {it.qty}
+                      </span>
                       <span>INR {(it.price * it.qty).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
 
                 {(() => {
-                  const subtotal = Number(o.totalAmount || 0);
+                  const lineSum = o.items.reduce((s, it) => s + Number(it.price || 0) * Number(it.qty || 0), 0);
+                  const hasServerPricing = typeof o.subtotalAmount === "number" && typeof o.taxAmount === "number";
+                  const subtotal = hasServerPricing ? Number(o.subtotalAmount) : Number(o.totalAmount || lineSum);
+                  const discount = typeof o.discountAmount === "number" ? Number(o.discountAmount) : 0;
                   const taxRate = Number(cafeInfo?.taxPercent || 0);
-                  const taxAmount = subtotal * (taxRate / 100);
-                  const totalWithTax = subtotal + taxAmount;
+                  const taxAmount = hasServerPricing ? Number(o.taxAmount) : subtotal * (taxRate / 100);
+                  const totalFinal = hasServerPricing ? Number(o.totalAmount || 0) : subtotal + taxAmount;
                   return (
                     <div className="mt-3 space-y-1 text-sm">
                       <div className="flex justify-between text-slate-600">
                         <span>Subtotal</span>
                         <span>INR {subtotal.toFixed(2)}</span>
                       </div>
+                      {discount > 0 && (
+                        <div className="flex justify-between text-slate-600">
+                          <span>Discount</span>
+                          <span>- INR {discount.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-600">
-                        <span>Tax {taxRate ? `(${taxRate}%)` : ""}</span>
+                        <span>Tax {!hasServerPricing && taxRate ? `(${taxRate}%)` : ""}</span>
                         <span>INR {taxAmount.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between font-extrabold text-slate-900">
                         <span>Total</span>
-                        <span>INR {totalWithTax.toFixed(2)}</span>
+                        <span>INR {totalFinal.toFixed(2)}</span>
                       </div>
                     </div>
                   );
                 })()}
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => setStatus(o._id, "served")} disabled={loading}>Served</Button>
-                  <Button variant="outline" onClick={() => setStatus(o._id, "paid")} disabled={loading}>Paid</Button>
-                  <Button variant="outline" onClick={() => downloadReceiptPdf(o)} disabled={loading}>Download PDF</Button>
+                  <Button variant="outline" onClick={() => setStatus(o._id, "served")} disabled={loading}>
+                    Served
+                  </Button>
+                  <Button variant="outline" onClick={() => setStatus(o._id, "paid")} disabled={loading}>
+                    Paid
+                  </Button>
+                  <Button variant="outline" onClick={() => downloadReceiptPdf(o)} disabled={loading}>
+                    Download PDF
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
-
-        {!loading && cafeId && orders.length === 0 && (
-          <div className="text-gray-700">No orders yet.</div>
-        )}
+          </motion.div>
+        ))}
       </div>
-    </main>
+
+      {!loading && cafeId && orders.length === 0 && <div className="text-gray-700">No orders yet.</div>}
+    </StaffShell>
   );
 }

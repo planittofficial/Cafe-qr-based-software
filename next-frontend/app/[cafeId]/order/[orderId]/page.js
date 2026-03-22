@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, Wifi, Sparkles } from "lucide-react";
 import { apiFetch } from "../../../../lib/api";
@@ -8,6 +8,10 @@ import { connectCafeSocket } from "../../../../lib/socket";
 import { Button } from "../../../../components/ui/Button";
 import { Card, CardContent } from "../../../../components/ui/Card";
 import CustomerBottomNav from "../../../../components/CustomerBottomNav";
+import { CustomerShell } from "../../../../components/CustomerShell";
+import SoundControl from "../../../../components/SoundControl";
+import { maybeNotifyBrowser, playCustomerStatus } from "../../../../lib/sounds";
+import { AppLoading } from "../../../../components/AppLoading";
 
 const displaySteps = [
   { key: "accepted", label: "Order Accepted" },
@@ -37,17 +41,20 @@ export default function OrderStatusPage() {
   const [error, setError] = useState("");
   const [socketState, setSocketState] = useState("disconnected");
   const [cafeInfo, setCafeInfo] = useState(null);
+  const skipFirstStatusFx = useRef(true);
 
   const load = async () => {
     try {
-      // No GET /api/orders/:id yet in backend; fallback: list and find.
-      const list = await apiFetch(`/api/orders/${cafeId}`);
-      const found = Array.isArray(list) ? list.find((o) => o._id === orderId) : null;
+      const found = await apiFetch(`/api/orders/${cafeId}/id/${orderId}`);
       setOrder(found || null);
     } catch (e) {
       setError(e.message || "Failed to load order");
     }
   };
+
+  useEffect(() => {
+    skipFirstStatusFx.current = true;
+  }, [orderId]);
 
   useEffect(() => {
     setError("");
@@ -65,7 +72,9 @@ export default function OrderStatusPage() {
     socket.on("disconnect", () => setSocketState("disconnected"));
 
     const onOrder = (payload) => {
-      if (payload?._id === orderId) setOrder(payload);
+      if (payload?._id === orderId) {
+        setOrder(payload);
+      }
     };
 
     socket.on("ORDER_UPDATED", onOrder);
@@ -97,18 +106,29 @@ export default function OrderStatusPage() {
     };
   }, [cafeId]);
 
+  useEffect(() => {
+    if (!order?.status) return;
+    if (skipFirstStatusFx.current) {
+      skipFirstStatusFx.current = false;
+      return;
+    }
+    playCustomerStatus();
+    maybeNotifyBrowser("Order update", order.status);
+  }, [order?.status]);
+
   return (
-    <main className="min-h-screen customer-shell pb-36">
+    <CustomerShell bottomInsetClass="pb-36">
+    <main className="min-h-screen">
       <div className="sticky top-0 z-20 border-b border-white/60 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2 px-4 py-3">
           <Button
             variant="outline"
-            className="h-9 w-9 rounded-full p-0"
+            className="h-9 w-9 shrink-0 rounded-full p-0"
             onClick={() => router.push(`/${cafeId}/menu?table=${tableNumber}`)}
           >
             <ArrowLeft size={18} className="text-slate-900" />
           </Button>
-          <div className="text-center">
+          <div className="min-w-0 flex-1 text-center">
             <div className="text-xs text-slate-500">Table {tableNumber || "?"}</div>
             <div className="text-sm font-semibold text-slate-900">Order Tracker</div>
             <div className="mt-2 flex items-center justify-center">
@@ -121,9 +141,12 @@ export default function OrderStatusPage() {
               </div>
             </div>
           </div>
-          <Button variant="outline" className="h-9 rounded-full px-3 text-xs" onClick={load}>
-            Refresh
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <SoundControl />
+            <Button variant="outline" className="h-9 rounded-full px-3 text-xs" onClick={load}>
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -136,15 +159,29 @@ export default function OrderStatusPage() {
         {error ? (
           <div className="mt-6 text-sm font-semibold text-red-700">{error}</div>
         ) : !order ? (
-          <div className="mt-6 text-sm text-slate-600">Loading...</div>
+          <AppLoading label="Tracking your order" className="min-h-[30vh]" />
         ) : (
           <Card className="mt-4 rounded-3xl border border-white/70 bg-white/85 shadow-sm">
             <CardContent>
               {(() => {
-                const subtotal = order.items.reduce((sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0), 0);
+                const lineSum = order.items.reduce(
+                  (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
+                  0
+                );
+                const hasServerPricing =
+                  typeof order.subtotalAmount === "number" && typeof order.taxAmount === "number";
+                const subtotal = hasServerPricing
+                  ? Number(order.subtotalAmount)
+                  : Number(order.totalAmount || lineSum);
+                const discount =
+                  typeof order.discountAmount === "number" ? Number(order.discountAmount) : 0;
                 const taxRate = Number(cafeInfo?.taxPercent || 0);
-                const taxAmount = subtotal * (taxRate / 100);
-                const totalWithTax = subtotal + taxAmount;
+                const taxAmount = hasServerPricing
+                  ? Number(order.taxAmount)
+                  : subtotal * (taxRate / 100);
+                const totalWithTax = hasServerPricing
+                  ? Number(order.totalAmount || 0)
+                  : subtotal + taxAmount;
                 return (
                   <>
               <div className="flex items-center justify-between">
@@ -200,8 +237,14 @@ export default function OrderStatusPage() {
                   <span>Subtotal</span>
                   <span>INR {subtotal.toFixed(0)}</span>
                 </div>
+                {discount > 0 && (
+                  <div className="mt-2 flex justify-between">
+                    <span>Discount</span>
+                    <span>- INR {discount.toFixed(0)}</span>
+                  </div>
+                )}
                 <div className="mt-2 flex justify-between">
-                  <span>Tax {taxRate ? `(${taxRate}%)` : ""}</span>
+                  <span>Tax {!hasServerPricing && taxRate ? `(${taxRate}%)` : ""}</span>
                   <span>INR {taxAmount.toFixed(0)}</span>
                 </div>
               </div>
@@ -238,5 +281,6 @@ export default function OrderStatusPage() {
       </div>
       <CustomerBottomNav cafeId={cafeId} />
     </main>
+    </CustomerShell>
   );
 }

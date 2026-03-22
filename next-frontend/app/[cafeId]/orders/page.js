@@ -4,10 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, Wifi, Clock } from "lucide-react";
 import { apiFetch } from "../../../lib/api";
+import { isVenueOrderApiEnabled } from "../../../lib/venue";
 import { connectCafeSocket } from "../../../lib/socket";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardContent } from "../../../components/ui/Card";
 import CustomerBottomNav from "../../../components/CustomerBottomNav";
+import { CustomerShell } from "../../../components/CustomerShell";
+import SoundControl from "../../../components/SoundControl";
+import { getOrCreateVisitId, rotateVisitId } from "../../../lib/visitSession";
+import { maybeNotifyBrowser, playCustomerStatus, requestNotificationPermission } from "../../../lib/sounds";
+import StaffAlertBanner from "../../../components/StaffAlertBanner";
+import { AppLoading } from "../../../components/AppLoading";
 
 const statusSteps = ["pending", "accepted", "preparing", "ready", "served", "paid"];
 
@@ -16,20 +23,32 @@ export default function OrdersPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const cafeId = params.cafeId;
+  const venueApi = isVenueOrderApiEnabled();
   const tableNumber = useMemo(() => searchParams.get("table"), [searchParams]);
 
+  const [visitId, setVisitId] = useState("");
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [socketState, setSocketState] = useState("disconnected");
   const [cafeInfo, setCafeInfo] = useState(null);
+  const [statusToast, setStatusToast] = useState("");
+
+  useEffect(() => {
+    if (!cafeId || !tableNumber) return;
+    setVisitId(getOrCreateVisitId(cafeId, Number(tableNumber)));
+  }, [cafeId, tableNumber]);
 
   const load = async () => {
-    if (!cafeId || !tableNumber) return;
+    if (!cafeId || !tableNumber || !visitId) return;
     setLoading(true);
     setError("");
     try {
-      const data = await apiFetch(`/api/orders/${cafeId}/table/${tableNumber}`);
+      const q = new URLSearchParams({ visitId });
+      const path = venueApi
+        ? `/api/orders/venue/table/${tableNumber}?${q.toString()}`
+        : `/api/orders/${cafeId}/table/${tableNumber}?${q.toString()}`;
+      const data = await apiFetch(path);
       setOrders(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(e.message || "Failed to load orders");
@@ -39,8 +58,8 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    if (cafeId && tableNumber) load();
-  }, [cafeId, tableNumber]);
+    if (cafeId && tableNumber && visitId) load();
+  }, [cafeId, tableNumber, visitId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +79,7 @@ export default function OrdersPage() {
   }, [cafeId]);
 
   useEffect(() => {
-    if (!cafeId || !tableNumber) return;
+    if (!cafeId || !tableNumber || !visitId) return;
     const socket = connectCafeSocket(cafeId);
     setSocketState("connecting");
 
@@ -70,6 +89,12 @@ export default function OrdersPage() {
     const onOrder = (payload) => {
       if (!payload?._id) return;
       if (String(payload.tableNumber) !== String(tableNumber)) return;
+      const pv = payload.visitId ? String(payload.visitId) : "";
+      if (pv && pv !== visitId) return;
+      playCustomerStatus();
+      setStatusToast(`Order ${String(payload._id).slice(-6)} · ${payload.status || "updated"}`);
+      setTimeout(() => setStatusToast(""), 5000);
+      maybeNotifyBrowser("Order update", `Table ${tableNumber} — ${payload.status || ""}`);
       setOrders((prev) => {
         const idx = prev.findIndex((o) => o._id === payload._id);
         if (idx === -1) return [payload, ...prev];
@@ -91,16 +116,26 @@ export default function OrdersPage() {
       socket.off("ORDER_PAID", onOrder);
       socket.disconnect();
     };
-  }, [cafeId, tableNumber]);
+  }, [cafeId, tableNumber, visitId]);
+
+  useEffect(() => {
+    if (!cafeId || !tableNumber || orders.length === 0) return;
+    const allPaid = orders.every((o) => o.status === "paid");
+    if (!allPaid) return;
+    const next = rotateVisitId(cafeId, Number(tableNumber));
+    if (next) setVisitId(next);
+    setOrders([]);
+  }, [orders, cafeId, tableNumber]);
 
   return (
-    <main className="min-h-screen customer-shell pb-36">
+    <CustomerShell bottomInsetClass="pb-36">
+    <main className="min-h-screen">
       <div className="sticky top-0 z-20 border-b border-white/60 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
-          <Button variant="outline" className="h-9 w-9 rounded-full p-0" onClick={() => router.push(`/${cafeId}/menu?table=${tableNumber}`)}>
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2 px-4 py-3">
+          <Button variant="outline" className="h-9 w-9 shrink-0 rounded-full p-0" onClick={() => router.push(`/${cafeId}/menu?table=${tableNumber}`)}>
             <ArrowLeft size={18} className="text-slate-900" />
           </Button>
-          <div className="text-center">
+          <div className="min-w-0 flex-1 text-center">
             <div className="text-xs text-slate-500">Table {tableNumber || "?"}</div>
             <div className="text-sm font-semibold text-slate-900">Your Orders</div>
             <div className="mt-2 flex items-center justify-center">
@@ -113,21 +148,36 @@ export default function OrdersPage() {
               </div>
             </div>
           </div>
-          <Button variant="outline" className="h-9 rounded-full px-3 text-xs" onClick={load}>
-            Refresh
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <SoundControl />
+            <Button variant="outline" className="h-9 rounded-full px-3 text-xs" onClick={load}>
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="mx-auto w-full max-w-md px-4 pt-2">
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
           <Wifi size={14} className={socketState === "connected" ? "text-emerald-600" : "text-slate-400"} />
           <span>Live updates: <span className="font-semibold">{socketState}</span></span>
+          <button
+            type="button"
+            className="rounded-full border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600"
+            onClick={() => requestNotificationPermission()}
+          >
+            Alerts
+          </button>
         </div>
+        {statusToast && (
+          <div className="mt-3">
+            <StaffAlertBanner message={statusToast} variant="success" />
+          </div>
+        )}
         {error && <div className="mt-4 text-sm font-semibold text-red-700">{error}</div>}
 
         {loading ? (
-          <div className="mt-6 text-sm text-slate-600">Loading...</div>
+          <AppLoading label="Loading your orders" className="min-h-[30vh]" />
         ) : orders.length === 0 ? (
           <div className="mt-6 rounded-3xl border border-white/70 bg-white/80 p-6 text-center text-sm text-slate-600 shadow-sm">
             No orders yet for this table.
@@ -165,23 +215,43 @@ export default function OrdersPage() {
                     </div>
 
                     {(() => {
-                      const subtotal = Number(order.totalAmount || 0);
+                      const lineSum = order.items.reduce(
+                        (s, it) => s + Number(it.price || 0) * Number(it.qty || 0),
+                        0
+                      );
+                      const hasServerPricing =
+                        typeof order.subtotalAmount === "number" && typeof order.taxAmount === "number";
+                      const subtotal = hasServerPricing
+                        ? Number(order.subtotalAmount)
+                        : Number(order.totalAmount || lineSum);
+                      const discount =
+                        typeof order.discountAmount === "number" ? Number(order.discountAmount) : 0;
                       const taxRate = Number(cafeInfo?.taxPercent || 0);
-                      const taxAmount = subtotal * (taxRate / 100);
-                      const totalWithTax = subtotal + taxAmount;
+                      const taxAmount = hasServerPricing
+                        ? Number(order.taxAmount)
+                        : subtotal * (taxRate / 100);
+                      const totalFinal = hasServerPricing
+                        ? Number(order.totalAmount || 0)
+                        : subtotal + taxAmount;
                       return (
                         <div className="mt-3 space-y-1 text-sm">
                           <div className="flex justify-between text-slate-600">
                             <span>Subtotal</span>
                             <span>INR {subtotal.toFixed(0)}</span>
                           </div>
+                          {discount > 0 && (
+                            <div className="flex justify-between text-slate-600">
+                              <span>Discount</span>
+                              <span>- INR {discount.toFixed(0)}</span>
+                            </div>
+                          )}
                           <div className="flex justify-between text-slate-600">
-                            <span>Tax {taxRate ? `(${taxRate}%)` : ""}</span>
+                            <span>Tax {!hasServerPricing && taxRate ? `(${taxRate}%)` : ""}</span>
                             <span>INR {taxAmount.toFixed(0)}</span>
                           </div>
                           <div className="flex items-center justify-between font-semibold text-slate-900">
                             <span>Total (incl. tax)</span>
-                            <span>INR {totalWithTax.toFixed(0)}</span>
+                            <span>INR {totalFinal.toFixed(0)}</span>
                           </div>
                         </div>
                       );
@@ -210,5 +280,6 @@ export default function OrdersPage() {
       </div>
       <CustomerBottomNav cafeId={cafeId} />
     </main>
+    </CustomerShell>
   );
 }

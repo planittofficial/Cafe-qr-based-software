@@ -1,15 +1,20 @@
 {
   "pages": {
-    "/[cafeId]/menu/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/[cafeId]/menu/page.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
+    ],
+    "/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/login/page.js"
+    ],
+    "/login/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/login/loading.js"
     ],
     "/[cafeId]/page": [
       "static/chunks/webpack.js",
@@ -21,40 +26,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/admin/menu/page.js"
     ],
-    "/admin/login/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/admin/login/page.js"
+      "static/chunks/app/page.js"
     ],
-    "/[cafeId]/cart/page": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/[cafeId]/cart/page.js"
-    ],
-    "/[cafeId]/order/[orderId]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/[cafeId]/order/[orderId]/page.js"
-    ],
-    "/waiter/login/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/waiter/login/page.js"
-    ],
-    "/[cafeId]/orders/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/[cafeId]/orders/page.js"
-    ],
-    "/waiter/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/waiter/page.js"
-    ],
-    "/kitchen/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/kitchen/page.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

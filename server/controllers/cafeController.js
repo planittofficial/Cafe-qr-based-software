@@ -2,6 +2,7 @@ const Cafe = require("../models/Cafe");
 const Table = require("../models/Table");
 const MenuItem = require("../models/MenuItem");
 const Order = require("../models/Order");
+const { canAccessCafe, forbiddenTenant } = require("../utils/tenant");
 
 exports.listCafes = async (req, res) => {
   try {
@@ -61,6 +62,9 @@ exports.resetTableSessions = async (req, res) => {
   try {
     const { cafeId } = req.body;
     if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
+    if (!canAccessCafe(req.user, cafeId)) {
+      return forbiddenTenant(res);
+    }
 
     const now = new Date();
     await Table.updateMany({ cafeId }, { $set: { sessionResetAt: now } });
@@ -88,6 +92,14 @@ exports.updateCafe = async (req, res) => {
       updates.discountValue = Number(discountPercent || 0);
     }
     if (typeof isActive !== "undefined") updates.isActive = Boolean(isActive);
+    if (typeof req.body.latitude !== "undefined") updates.latitude = req.body.latitude === null ? null : Number(req.body.latitude);
+    if (typeof req.body.longitude !== "undefined") updates.longitude = req.body.longitude === null ? null : Number(req.body.longitude);
+    if (typeof req.body.serviceRadiusMeters !== "undefined") {
+      updates.serviceRadiusMeters = Number(req.body.serviceRadiusMeters || 0);
+    }
+    if (typeof req.body.primaryColor === "string") updates.primaryColor = req.body.primaryColor;
+    if (typeof req.body.accentColor === "string") updates.accentColor = req.body.accentColor;
+    if (typeof req.body.venueTimezone === "string") updates.venueTimezone = req.body.venueTimezone;
 
     const cafe = await Cafe.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!cafe) return res.status(404).json({ message: "Cafe not found" });

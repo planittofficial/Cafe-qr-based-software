@@ -1,4 +1,4 @@
-﻿const Cafe = require("../models/Cafe");
+const Cafe = require("../models/Cafe");
 
 function getCafeIdFromRequest(req) {
   if (req.user?.role === "super_admin") {
@@ -38,6 +38,14 @@ exports.updateCafe = async (req, res) => {
       updates.discountType = "percent";
       updates.discountValue = Number(req.body.discountPercent || 0);
     }
+    if (typeof req.body.latitude !== "undefined") updates.latitude = req.body.latitude === null ? null : Number(req.body.latitude);
+    if (typeof req.body.longitude !== "undefined") updates.longitude = req.body.longitude === null ? null : Number(req.body.longitude);
+    if (typeof req.body.serviceRadiusMeters !== "undefined") {
+      updates.serviceRadiusMeters = Number(req.body.serviceRadiusMeters || 0);
+    }
+    if (typeof req.body.primaryColor === "string") updates.primaryColor = req.body.primaryColor;
+    if (typeof req.body.accentColor === "string") updates.accentColor = req.body.accentColor;
+    if (typeof req.body.venueTimezone === "string") updates.venueTimezone = req.body.venueTimezone;
 
     const cafe = await Cafe.findByIdAndUpdate(cafeId, updates, { new: true });
     if (!cafe) return res.status(404).json({ message: "Cafe not found" });

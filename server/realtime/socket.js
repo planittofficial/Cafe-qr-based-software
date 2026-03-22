@@ -1,3 +1,6 @@
+const { canAccessCafe } = require("../utils/tenant");
+const { getUserFromSocketToken } = require("../utils/jwtUser");
+
 let io = null;
 
 function initSocket(httpServer) {
@@ -12,9 +15,26 @@ function initSocket(httpServer) {
     });
 
     io.on("connection", (socket) => {
-      socket.on("JOIN_CAFE", ({ cafeId }) => {
+      socket.on("JOIN_CAFE", async ({ cafeId }) => {
         if (!cafeId) return;
-        socket.join(`cafe:${cafeId}`);
+        const token =
+          socket.handshake.auth?.token ||
+          socket.handshake.query?.token ||
+          socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, "");
+
+        if (token) {
+          const user = await getUserFromSocketToken(String(token));
+          if (!user) {
+            socket.emit("JOIN_ERROR", { message: "Invalid or expired token" });
+            return;
+          }
+          if (!canAccessCafe(user, cafeId)) {
+            socket.emit("JOIN_ERROR", { message: "Forbidden: cannot join this cafe room" });
+            return;
+          }
+        }
+        // No token: guest PWA / customer live order updates (still room-scoped by cafeId only)
+        socket.join(`cafe:${String(cafeId)}`);
       });
     });
 

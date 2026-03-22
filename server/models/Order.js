@@ -14,11 +14,21 @@ const orderSchema = new mongoose.Schema(
   {
     cafeId: { type: mongoose.Schema.Types.ObjectId, ref: "Cafe", required: true, index: true },
     tableNumber: { type: Number, required: true, min: 1 },
+    /** UUID per table visit — isolates customer order list from previous guests at the same table */
+    visitId: { type: String, trim: true, default: "", index: true },
 
     customerName: { type: String, required: true, trim: true },
     phone: { type: String, required: true, trim: true },
 
     items: { type: [orderItemSchema], default: [] },
+
+    /** Sum of line items (menu prices × qty) before discount */
+    subtotalAmount: { type: Number, default: 0, min: 0 },
+    /** Tax portion (computed server-side from cafe tax %) */
+    taxAmount: { type: Number, default: 0, min: 0 },
+    /** Discount applied (from cafe settings) */
+    discountAmount: { type: Number, default: 0, min: 0 },
+    /** Final amount payable (after discount + tax) */
     totalAmount: { type: Number, required: true, min: 0 },
 
     status: {
@@ -33,6 +43,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ cafeId: 1, createdAt: -1 });
+orderSchema.index({ cafeId: 1, tableNumber: 1, visitId: 1 });
 
 module.exports = mongoose.model("Order", orderSchema);
 

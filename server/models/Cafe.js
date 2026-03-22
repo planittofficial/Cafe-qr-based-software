@@ -11,6 +11,14 @@ const cafeSchema = new mongoose.Schema(
     discountType: { type: String, enum: ["percent", "fixed"], default: "percent" },
     discountValue: { type: Number, default: 0, min: 0 },
     isActive: { type: Boolean, default: true },
+    /** Optional geofence: ordering requires client coords within radius (meters) */
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    serviceRadiusMeters: { type: Number, default: 0, min: 0 },
+    /** Owner-configured theme (applied via CSS variables on customer app) */
+    primaryColor: { type: String, default: "", trim: true },
+    accentColor: { type: String, default: "", trim: true },
+    venueTimezone: { type: String, default: "UTC", trim: true },
   },
   { timestamps: true }
 );

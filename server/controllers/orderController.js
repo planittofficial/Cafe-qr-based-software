@@ -1,11 +1,59 @@
 const Order = require("../models/Order");
 const Table = require("../models/Table");
+const Cafe = require("../models/Cafe");
+const MenuItem = require("../models/MenuItem");
 const { emitCafeEvent } = require("../realtime/socket");
+const { canAccessCafe, forbiddenTenant } = require("../utils/tenant");
+const { computeOrderTotals } = require("../utils/pricing");
+const { haversineMeters } = require("../utils/geo");
+const {
+  upsertCustomerFromOrder,
+  signCustomerCookie,
+} = require("../controllers/customerController");
+
+exports.listOrdersByTableVenue = async (req, res) => {
+  const cafeId = process.env.DEFAULT_CAFE_ID;
+  if (!cafeId) {
+    return res.status(500).json({ message: "DEFAULT_CAFE_ID is not set on the server" });
+  }
+  req.params.cafeId = cafeId;
+  return exports.listOrdersByTable(req, res);
+};
 
 exports.createOrder = async (req, res) => {
   try {
-    const { cafeId, tableNumber, customerName, phone, items } = req.body;
+    const { cafeId, tableNumber, customerName, phone, items, visitId, customerLat, customerLng } = req.body;
     if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
+    const visit = typeof visitId === "string" ? visitId.trim() : "";
+    if (!visit) return res.status(400).json({ message: "visitId is required" });
+
+    const cafe = await Cafe.findById(cafeId).lean();
+    if (!cafe) return res.status(404).json({ message: "Cafe not found" });
+    if (cafe.isActive === false) {
+      return res.status(403).json({ message: "This cafe is not accepting orders" });
+    }
+
+    const hasFence =
+      typeof cafe.latitude === "number" &&
+      typeof cafe.longitude === "number" &&
+      !Number.isNaN(cafe.latitude) &&
+      !Number.isNaN(cafe.longitude) &&
+      Number(cafe.serviceRadiusMeters) > 0;
+    if (hasFence) {
+      const lat = Number(customerLat);
+      const lng = Number(customerLng);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) {
+        return res.status(400).json({
+          message: "Location is required to place an order at this venue. Please enable location services and try again.",
+        });
+      }
+      const dist = haversineMeters(lat, lng, cafe.latitude, cafe.longitude);
+      if (dist > Number(cafe.serviceRadiusMeters)) {
+        return res.status(403).json({
+          message: "You appear to be outside this restaurant's ordering area. If you want to order, please come to the restaurant's location.",
+        });
+      }
+    }
     if (!tableNumber) return res.status(400).json({ message: "tableNumber is required" });
     if (!customerName) return res.status(400).json({ message: "customerName is required" });
     if (!phone) return res.status(400).json({ message: "phone is required" });
@@ -13,17 +61,53 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ message: "items[] is required" });
     }
 
-    const totalAmount = items.reduce(
-      (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0),
-      0
-    );
+    const resolvedItems = [];
+    let lineSubtotal = 0;
+
+    for (const line of items) {
+      const menuItemId = line.menuItemId;
+      if (!menuItemId) {
+        return res.status(400).json({ message: "Each item must include menuItemId" });
+      }
+      const qty = Number(line.qty);
+      if (!qty || qty < 1) {
+        return res.status(400).json({ message: "Each item must have qty >= 1" });
+      }
+
+      const menuDoc = await MenuItem.findOne({
+        _id: menuItemId,
+        cafeId,
+        isAvailable: true,
+      }).lean();
+
+      if (!menuDoc) {
+        return res.status(400).json({
+          message: "One or more items are unavailable or do not belong to this cafe",
+        });
+      }
+
+      const unitPrice = Number(menuDoc.price);
+      lineSubtotal += unitPrice * qty;
+      resolvedItems.push({
+        menuItemId: menuDoc._id,
+        name: menuDoc.name,
+        price: unitPrice,
+        qty,
+      });
+    }
+
+    const { subtotalAmount, discountAmount, taxAmount, totalAmount } = computeOrderTotals(cafe, lineSubtotal);
 
     const order = await Order.create({
       cafeId,
       tableNumber,
+      visitId: visit,
       customerName,
       phone,
-      items,
+      items: resolvedItems,
+      subtotalAmount,
+      discountAmount,
+      taxAmount,
       totalAmount,
       status: "pending",
     });
@@ -35,6 +119,18 @@ exports.createOrder = async (req, res) => {
 
     emitCafeEvent(order.cafeId, "NEW_ORDER", order);
 
+    try {
+      const cust = await upsertCustomerFromOrder({
+        phone,
+        name: customerName,
+        tableNumber,
+        cafeId,
+      });
+      if (cust) signCustomerCookie(res, cust);
+    } catch {
+      // non-fatal
+    }
+
     return res.status(201).json(order);
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
@@ -44,7 +140,35 @@ exports.createOrder = async (req, res) => {
 exports.listOrdersByCafe = async (req, res) => {
   try {
     const { cafeId } = req.params;
-    const orders = await Order.find({ cafeId }).sort({ createdAt: -1 });
+    if (!canAccessCafe(req.user, cafeId)) {
+      return forbiddenTenant(res);
+    }
+    const q = { cafeId };
+    const { from, to, minTotal, maxTotal, status } = req.query;
+
+    if (from || to) {
+      q.createdAt = {};
+      if (from) q.createdAt.$gte = new Date(String(from));
+      if (to) q.createdAt.$lte = new Date(String(to));
+    }
+
+    if (minTotal !== undefined && minTotal !== "" && !Number.isNaN(Number(minTotal))) {
+      q.totalAmount = { ...(q.totalAmount || {}), $gte: Number(minTotal) };
+    }
+    if (maxTotal !== undefined && maxTotal !== "" && !Number.isNaN(Number(maxTotal))) {
+      q.totalAmount = { ...(q.totalAmount || {}), $lte: Number(maxTotal) };
+    }
+
+    if (status && String(status).trim()) {
+      const parts = String(status)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length === 1) q.status = parts[0];
+      else if (parts.length > 1) q.status = { $in: parts };
+    }
+
+    const orders = await Order.find(q).sort({ createdAt: -1 });
     return res.json(orders);
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
@@ -56,8 +180,22 @@ exports.listOrdersByTable = async (req, res) => {
     const { cafeId, tableNumber } = req.params;
     if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
     if (!tableNumber) return res.status(400).json({ message: "tableNumber is required" });
-    const orders = await Order.find({ cafeId, tableNumber: Number(tableNumber) }).sort({ createdAt: -1 });
+    const q = { cafeId, tableNumber: Number(tableNumber) };
+    const vid = typeof req.query.visitId === "string" ? req.query.visitId.trim() : "";
+    if (vid) q.visitId = vid;
+    const orders = await Order.find(q).sort({ createdAt: -1 });
     return res.json(orders);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
+
+exports.getOrderById = async (req, res) => {
+  try {
+    const { cafeId, id } = req.params;
+    const order = await Order.findOne({ _id: id, cafeId });
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    return res.json(order);
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
   }
@@ -73,6 +211,9 @@ exports.updateOrder = async (req, res) => {
 
     const prev = await Order.findById(req.params.id);
     if (!prev) return res.status(404).json({ message: "Order not found" });
+    if (!canAccessCafe(req.user, prev.cafeId)) {
+      return forbiddenTenant(res);
+    }
 
     const prevStatus = prev.status;
 

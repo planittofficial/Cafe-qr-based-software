@@ -9,6 +9,18 @@
   --brand-accent: 245 158 11;  /* amber */
   --brand-dark: 15 23 42;      /* slate */
   --brand-light: 255 247 237;  /* warm sand */
+
+  /* Semantic surfaces (RGB triplets for rgb() / rgb(var()) ) */
+  --surface-base: 255 247 237;
+  --surface-elevated: 255 255 255;
+  --surface-muted: 241 245 249;
+  --border-default: 226 232 240;
+  --border-strong: 148 163 184;
+  --focus-ring: 251 146 60;
+  --success: 22 163 74;
+  --warning: 217 119 6;
+  --danger: 220 38 38;
+  --info: 2 132 199;
 }
 
 html, body {
@@ -69,6 +81,16 @@ body {
     radial-gradient(circle at 50% 90%, rgba(59, 130, 246, 0.12), transparent 48%);
 }
 
+/* Richer backdrop for the customer menu flow */
+.menu-page-surface {
+  background-color: #fffbf7;
+  background-image:
+    radial-gradient(ellipse 100% 60% at 50% -15%, rgba(251, 146, 60, 0.28), transparent 55%),
+    radial-gradient(circle at 0% 30%, rgba(244, 114, 182, 0.12), transparent 40%),
+    radial-gradient(circle at 100% 20%, rgba(52, 211, 153, 0.14), transparent 42%),
+    radial-gradient(circle at 50% 100%, rgba(251, 191, 36, 0.1), transparent 45%);
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -105,4 +127,38 @@ body {
 
 .animate-glow {
   animation: pulseGlow 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .skeleton {
+    animation: none;
+    background: rgba(226, 232, 240, 0.95);
+  }
+
+  .animate-floaty,
+  .animate-glow {
+    animation: none;
+  }
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow:
+    0 0 0 2px rgb(var(--surface-elevated)),
+    0 0 0 4px rgba(var(--focus-ring), 0.45);
+}
+
+/* Marketing homepage — Coffee Culture hero card */
+.coffee-culture-root .coffee-steam-ring {
+  box-shadow:
+    0 0 0 1px rgba(120, 53, 15, 0.12),
+    0 28px 56px -16px rgba(28, 25, 23, 0.45);
 }
