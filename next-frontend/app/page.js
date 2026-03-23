@@ -415,11 +415,11 @@ export default function Home() {
                 {communityReviewNotes.map((note) => (
                   <div key={note.name} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
                     <div className="flex items-center gap-2 text-amber-700">
-                      <Star className="h-4 w-4" aria-hidden />
-                      <Star className="h-4 w-4" aria-hidden />
-                      <Star className="h-4 w-4" aria-hidden />
-                      <Star className="h-4 w-4" aria-hidden />
-                      <Star className="h-4 w-4" aria-hidden />
+                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" aria-hidden />
+                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" aria-hidden />
+                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" aria-hidden />
+                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" aria-hidden />
+                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" aria-hidden />
                     </div>
                     <p className="mt-3 text-sm leading-snug text-stone-700">"{note.quote}"</p>
                     <div className="mt-3 text-xs font-semibold uppercase tracking-widest text-stone-400">{note.name}</div>
