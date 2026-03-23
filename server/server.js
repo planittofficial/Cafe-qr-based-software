@@ -31,12 +31,7 @@ const allowedOrigins = [
   "http://localhost:5000",
   "http://localhost:3000",
   "https://cafe-qr-based-software.onrender.com",
-<<<<<<< HEAD
-  "https://coffee-culture-nagpur.netlify.app/",
-  ...envOrigins,
-=======
   "https://coffee-culture-nagpur.netlify.app",
->>>>>>> d016ebadae675a86799ade6c4822c6389f584325
 ];
 
 app.use(
