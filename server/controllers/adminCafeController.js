@@ -7,6 +7,14 @@ function getCafeIdFromRequest(req) {
   return req.user?.cafeId || null;
 }
 
+function normalizeImageList(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 exports.getCafe = async (req, res) => {
   try {
     const cafeId = getCafeIdFromRequest(req);
@@ -15,6 +23,22 @@ exports.getCafe = async (req, res) => {
     const cafe = await Cafe.findById(cafeId).lean();
     if (!cafe) return res.status(404).json({ message: "Cafe not found" });
     return res.json(cafe);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
+
+exports.getNonSmokingImages = async (req, res) => {
+  try {
+    const cafeId = getCafeIdFromRequest(req);
+    if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
+
+    const cafe = await Cafe.findById(cafeId).select("showcaseNonSmokingShots").lean();
+    if (!cafe) return res.status(404).json({ message: "Cafe not found" });
+
+    return res.json({
+      showcaseNonSmokingShots: normalizeImageList(cafe.showcaseNonSmokingShots),
+    });
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
   }
@@ -75,10 +99,7 @@ exports.updateCafe = async (req, res) => {
 
     if (Array.isArray(req.body.showcaseNonSmokingShots)) {
       incomingLen = req.body.showcaseNonSmokingShots.length;
-      updates.showcaseNonSmokingShots = req.body.showcaseNonSmokingShots
-        .filter((s) => typeof s === "string")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+      updates.showcaseNonSmokingShots = normalizeImageList(req.body.showcaseNonSmokingShots);
       filteredLen = updates.showcaseNonSmokingShots.length;
       filteredFirst = updates.showcaseNonSmokingShots[0] || null;
     }
@@ -96,6 +117,28 @@ exports.updateCafe = async (req, res) => {
     };
 
     return res.json({ ...(cafe?.toObject ? cafe.toObject() : cafe), __debugNonSmoking: debug });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
+
+exports.updateNonSmokingImages = async (req, res) => {
+  try {
+    const cafeId = getCafeIdFromRequest(req);
+    if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
+
+    const showcaseNonSmokingShots = normalizeImageList(req.body.showcaseNonSmokingShots);
+
+    const cafe = await Cafe.findByIdAndUpdate(
+      cafeId,
+      { showcaseNonSmokingShots },
+      { new: true, strict: false }
+    );
+    if (!cafe) return res.status(404).json({ message: "Cafe not found" });
+
+    return res.json({
+      showcaseNonSmokingShots: normalizeImageList(cafe.showcaseNonSmokingShots),
+    });
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
   }

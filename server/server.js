@@ -34,12 +34,17 @@ const allowedOrigins = [
   "https://coffee-culture-nagpur.netlify.app",
 ];
 
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  const allowed = new Set([...allowedOrigins, ...envOrigins]);
+  if (allowed.has(origin)) return true;
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      const allowed = new Set([...allowedOrigins, ...envOrigins]);
-      if (allowed.has(origin)) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,

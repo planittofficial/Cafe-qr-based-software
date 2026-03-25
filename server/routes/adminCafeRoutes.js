@@ -7,6 +7,8 @@ router.use(requireAuth);
 router.use(requireRole(["cafe_admin", "super_admin"]));
 
 router.get("/", adminCafeController.getCafe);
+router.get("/non-smoking-images", adminCafeController.getNonSmokingImages);
 router.patch("/", adminCafeController.updateCafe);
+router.patch("/non-smoking-images", adminCafeController.updateNonSmokingImages);
 
 module.exports = router;

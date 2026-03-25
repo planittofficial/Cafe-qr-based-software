@@ -22,6 +22,24 @@ function upsertById(list, item) {
   return copy;
 }
 
+function normalizeImageList(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function getUploadedImageUrl(data) {
+  return (
+    data?.url ||
+    data?.secure_url ||
+    data?.imageUrl ||
+    data?.image ||
+    ""
+  );
+}
+
 export default function AdminMenuPage() {
   const { user, ready: authReady } = useClientAuth();
   const role = user?.role;
@@ -179,7 +197,6 @@ export default function AdminMenuPage() {
     showcaseHighlights: [],
     showcaseCommunityNotes: [],
     showcaseCommunityShots: [],
-    showcaseNonSmokingShots: [],
   });
   const [showcaseUploading, setShowcaseUploading] = useState(false);
   const [cafeLoading, setCafeLoading] = useState(false);
@@ -189,6 +206,12 @@ export default function AdminMenuPage() {
   const [cafeBrandUploading, setCafeBrandUploading] = useState(false);
   const [cafeUpiUploading, setCafeUpiUploading] = useState(false);
   const [cafeUpiUploaded, setCafeUpiUploaded] = useState(false);
+  const [nonSmokingShots, setNonSmokingShots] = useState([]);
+  const [nonSmokingUrlInput, setNonSmokingUrlInput] = useState("");
+  const [nonSmokingUploading, setNonSmokingUploading] = useState(false);
+  const [nonSmokingSaving, setNonSmokingSaving] = useState(false);
+  const [nonSmokingError, setNonSmokingError] = useState("");
+  const [nonSmokingSuccess, setNonSmokingSuccess] = useState("");
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -203,6 +226,8 @@ export default function AdminMenuPage() {
   const staffCafeId = tablesCafeId;
 
   const cafeIdForAdmin = tablesCafeId;
+  const isCafeAssetUploading =
+    showcaseUploading || cafeLogoUploading || cafeBrandUploading || cafeUpiUploading || nonSmokingUploading;
 
   const requireLogin = (redirectOnFail = true) => {
     const token = getToken();
@@ -371,9 +396,13 @@ export default function AdminMenuPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Upload failed");
-      setter(data.url || "");
+      const uploadedUrl = getUploadedImageUrl(data);
+      if (!uploadedUrl) throw new Error("Upload succeeded but no image URL was returned");
+      setter(uploadedUrl);
+      return uploadedUrl;
     } catch (e) {
       setCafeError(e.message || "Image upload failed");
+      throw e;
     } finally {
       setUploading(false);
     }
@@ -430,10 +459,8 @@ export default function AdminMenuPage() {
         showcaseCommunityShots: Array.isArray(data?.showcaseCommunityShots)
           ? data.showcaseCommunityShots.map((s) => s || "")
           : [],
-        showcaseNonSmokingShots: Array.isArray(data?.showcaseNonSmokingShots)
-          ? data.showcaseNonSmokingShots.map((s) => s || "")
-          : [],
       });
+      setNonSmokingShots(Array.isArray(data?.showcaseNonSmokingShots) ? normalizeImageList(data.showcaseNonSmokingShots) : []);
     } catch (e) {
       setCafeError(e.message || "Failed to load cafe");
     } finally {
@@ -462,6 +489,10 @@ export default function AdminMenuPage() {
   const saveCafe = async (event) => {
     event.preventDefault();
     if (!requireLogin(false)) return;
+    if (isCafeAssetUploading) {
+      setCafeError("Please wait for all image uploads to finish before saving.");
+      return;
+    }
     if (!cafeIdForAdmin) {
       setCafeError("cafeId is required");
       return;
@@ -470,6 +501,7 @@ export default function AdminMenuPage() {
     setCafeError("");
     setCafeSuccess("");
     try {
+      const normalizedCommunityShots = normalizeImageList(cafeForm.showcaseCommunityShots);
       const body = {
         name: cafeForm.name,
         address: cafeForm.address,
@@ -496,12 +528,7 @@ export default function AdminMenuPage() {
           name: it?.name || "",
           tag: it?.tag || "",
         })),
-        showcaseCommunityShots: (cafeForm.showcaseCommunityShots || [])
-          .filter((s) => typeof s === "string")
-          .map((s) => s),
-        showcaseNonSmokingShots: (cafeForm.showcaseNonSmokingShots || [])
-          .filter((s) => typeof s === "string")
-          .map((s) => s),
+        showcaseCommunityShots: normalizedCommunityShots,
       };
       if (role === "super_admin") body.cafeId = cafeIdForAdmin;
       const updated = await apiFetch("/api/admin/cafe", {
@@ -510,13 +537,7 @@ export default function AdminMenuPage() {
         body: JSON.stringify(body),
       });
       setCafeInfo(updated);
-      setCafeSuccess(`Cafe updated. Non-smoking images: ${Array.isArray(updated?.showcaseNonSmokingShots) ? updated.showcaseNonSmokingShots.length : 0}`);
-      setCafeForm((prev) => ({
-        ...prev,
-        showcaseNonSmokingShots: Array.isArray(updated?.showcaseNonSmokingShots)
-          ? updated.showcaseNonSmokingShots.map((s) => s || "")
-          : prev.showcaseNonSmokingShots,
-      }));
+      setCafeSuccess("Cafe branding updated.");
     } catch (e) {
       setCafeError(e.message || "Failed to update cafe");
     } finally {
@@ -623,26 +644,88 @@ export default function AdminMenuPage() {
     }));
   };
 
-  const updateNonSmokingShot = (idx, value) => {
-    setCafeForm((prev) => {
-      const next = [...(prev.showcaseNonSmokingShots || [])];
-      next[idx] = value;
-      return { ...prev, showcaseNonSmokingShots: next };
-    });
-  };
-
-  const addNonSmokingShot = () => {
-    setCafeForm((prev) => ({
-      ...prev,
-      showcaseNonSmokingShots: [...(prev.showcaseNonSmokingShots || []), ""],
-    }));
+  const addNonSmokingUrl = () => {
+    const nextUrl = String(nonSmokingUrlInput || "").trim();
+    if (!nextUrl) return;
+    setNonSmokingShots((prev) => [...prev, nextUrl]);
+    setNonSmokingUrlInput("");
+    setNonSmokingError("");
+    setNonSmokingSuccess("");
   };
 
   const removeNonSmokingShot = (idx) => {
-    setCafeForm((prev) => ({
-      ...prev,
-      showcaseNonSmokingShots: (prev.showcaseNonSmokingShots || []).filter((_, i) => i !== idx),
-    }));
+    setNonSmokingShots((prev) => prev.filter((_, i) => i !== idx));
+    setNonSmokingError("");
+    setNonSmokingSuccess("");
+  };
+
+  const uploadNonSmokingFiles = async (files) => {
+    const selectedFiles = Array.from(files || []).filter(Boolean);
+    if (selectedFiles.length === 0) return;
+    setNonSmokingUploading(true);
+    setNonSmokingError("");
+    setNonSmokingSuccess("");
+    try {
+      const uploadedUrls = [];
+      for (const file of selectedFiles) {
+        const uploadedUrl = await uploadCafeImage(file, () => {}, () => {});
+        if (uploadedUrl) uploadedUrls.push(uploadedUrl);
+      }
+      setNonSmokingShots((prev) => [...prev, ...uploadedUrls]);
+      if (uploadedUrls.length > 0) {
+        setNonSmokingSuccess(`${uploadedUrls.length} non-smoking image${uploadedUrls.length === 1 ? "" : "s"} uploaded. Save gallery to publish them.`);
+      }
+    } catch (e) {
+      setNonSmokingError(e.message || "Failed to upload non-smoking images");
+    } finally {
+      setNonSmokingUploading(false);
+    }
+  };
+
+  const saveNonSmokingGallery = async () => {
+    if (!requireLogin(false)) return;
+    if (!cafeIdForAdmin) {
+      setNonSmokingError("cafeId is required");
+      return;
+    }
+    if (nonSmokingUploading) {
+      setNonSmokingError("Please wait for uploads to finish before saving the gallery.");
+      return;
+    }
+
+    setNonSmokingSaving(true);
+    setNonSmokingError("");
+    setNonSmokingSuccess("");
+    try {
+      const normalizedShots = normalizeImageList(nonSmokingShots);
+      const body = {
+        showcaseNonSmokingShots: normalizedShots,
+      };
+      if (role === "super_admin") body.cafeId = cafeIdForAdmin;
+      const data = await apiFetch("/api/admin/cafe", {
+        method: "PATCH",
+        headers: { ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      const savedShots = Array.isArray(data?.showcaseNonSmokingShots) ? normalizeImageList(data.showcaseNonSmokingShots) : [];
+      const debug = data?.__debugNonSmoking;
+      const debugSummary = debug
+        ? ` Sent: ${normalizedShots.length}, received: ${debug.receivedLen}, kept: ${debug.filteredLen}.`
+        : ` Sent: ${normalizedShots.length}.`;
+      setNonSmokingShots(savedShots);
+      setCafeInfo((prev) => ({
+        ...(prev || {}),
+        showcaseNonSmokingShots: savedShots,
+      }));
+      setNonSmokingSuccess(`Non-smoking gallery saved. Images: ${savedShots.length}.${debugSummary}`);
+      if (normalizedShots.length > 0 && savedShots.length === 0) {
+        setNonSmokingError("The gallery save completed, but the backend did not persist any non-smoking image URLs.");
+      }
+    } catch (e) {
+      setNonSmokingError(e.message || "Failed to save non-smoking gallery");
+    } finally {
+      setNonSmokingSaving(false);
+    }
   };
 
   const uploadMenuCsv = async (event) => {
@@ -1455,70 +1538,9 @@ export default function AdminMenuPage() {
                   </div>
                 </div>
 
-                <div className="md:col-span-2 mt-4 rounded-2xl border border-emerald-100 bg-white/70 p-4 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="font-semibold text-slate-900">Non-smoking area</div>
-                      <div className="text-xs text-slate-500 mt-0.5">Upload photos to show guests the non-smoking zone.</div>
-                    </div>
-                    <Button variant="outline" type="button" onClick={addNonSmokingShot}>
-                      Add photo
-                    </Button>
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    {(cafeForm.showcaseNonSmokingShots || []).length === 0 && (
-                      <div className="text-xs text-slate-500">Upload or paste image URLs for the non-smoking gallery.</div>
-                    )}
-                    {(cafeForm.showcaseNonSmokingShots || []).map((shot, idx) => (
-                      <div key={`non-smoking-shot-${idx}`} className="rounded-2xl border border-slate-200 bg-white/90 p-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <Input
-                            value={shot}
-                            onChange={(e) => updateNonSmokingShot(idx, e.target.value)}
-                            placeholder="Image URL"
-                          />
-                          <div className="min-h-[72px]">
-                            {shot ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={shot}
-                                alt="Non-smoking area preview"
-                                className="h-16 w-full rounded-lg object-cover border border-slate-200 bg-white"
-                              />
-                            ) : (
-                              <div className="h-16 w-full rounded-lg bg-slate-50 border border-slate-200" />
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) =>
-                                uploadCafeImage(
-                                  e.target.files?.[0],
-                                  (url) => updateNonSmokingShot(idx, url),
-                                  setShowcaseUploading
-                                )
-                              }
-                              className="text-sm text-slate-600"
-                            />
-                            {showcaseUploading && (
-                              <div className="text-xs text-slate-500">Uploading image...</div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-3 flex justify-end">
-                          <Button variant="outline" type="button" onClick={() => removeNonSmokingShot(idx)}>
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
                 <div className="md:col-span-2">
-                  <Button className="w-full" type="submit" disabled={cafeLoading}>
-                    {cafeLoading ? "Saving..." : "Save branding"}
+                  <Button className="w-full" type="submit" disabled={cafeLoading || isCafeAssetUploading}>
+                    {cafeLoading ? "Saving..." : isCafeAssetUploading ? "Wait for uploads..." : "Save branding"}
                   </Button>
                 </div>
               </form>
@@ -1526,6 +1548,90 @@ export default function AdminMenuPage() {
 
             {cafeError && <div className="mt-3 text-red-700 font-semibold">{cafeError}</div>}
             {cafeSuccess && <div className="mt-3 text-emerald-700 font-semibold">{cafeSuccess}</div>}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-emerald-100 shadow-xl">
+          <CardContent>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-bold">Non-smoking gallery</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Upload photos for the website&apos;s non-smoking section and publish them separately from branding.
+                </div>
+              </div>
+              <div className="text-sm font-semibold text-emerald-700">
+                {nonSmokingShots.length} image{nonSmokingShots.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <div className="text-sm font-semibold text-slate-900">Upload images</div>
+                <div className="mt-1 text-xs text-slate-500">Select one or more photos. They will be uploaded first, then saved to the website gallery.</div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    uploadNonSmokingFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                  className="mt-4 block w-full text-sm text-slate-600"
+                />
+                <div className="mt-4 text-sm font-semibold text-slate-900">Add image URL</div>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={nonSmokingUrlInput}
+                    onChange={(e) => setNonSmokingUrlInput(e.target.value)}
+                    placeholder="https://..."
+                  />
+                  <Button type="button" variant="outline" onClick={addNonSmokingUrl}>
+                    Add URL
+                  </Button>
+                </div>
+                {nonSmokingUploading && <div className="mt-3 text-xs text-slate-500">Uploading non-smoking images...</div>}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-semibold text-slate-900">Publish gallery</div>
+                <div className="mt-1 text-xs text-slate-500">After uploads finish, save this gallery to update the website.</div>
+                <Button
+                  className="mt-4 w-full"
+                  type="button"
+                  onClick={saveNonSmokingGallery}
+                  disabled={nonSmokingSaving || nonSmokingUploading}
+                >
+                  {nonSmokingSaving ? "Saving gallery..." : nonSmokingUploading ? "Wait for uploads..." : "Save non-smoking gallery"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {nonSmokingShots.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                  No non-smoking images added yet.
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {nonSmokingShots.map((shot, idx) => (
+                    <div key={`${shot}-${idx}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <div className="relative h-40 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={shot} alt={`Non-smoking preview ${idx + 1}`} className="h-full w-full object-cover" />
+                      </div>
+                      <div className="mt-3 break-all text-xs text-slate-500">{shot}</div>
+                      <Button className="mt-3 w-full" variant="outline" type="button" onClick={() => removeNonSmokingShot(idx)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {nonSmokingError && <div className="mt-4 text-red-700 font-semibold">{nonSmokingError}</div>}
+            {nonSmokingSuccess && <div className="mt-4 text-emerald-700 font-semibold">{nonSmokingSuccess}</div>}
           </CardContent>
         </Card>
 
