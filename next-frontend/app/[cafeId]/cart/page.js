@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../../lib/api";
 import { Button } from "../../../components/ui/Button";
-import { Sparkles, Receipt } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Sparkles, Receipt } from "lucide-react";
 import { Card, CardContent } from "../../../components/ui/Card";
 import CustomerBottomNav from "../../../components/CustomerBottomNav";
 import { CustomerShell } from "../../../components/CustomerShell";
@@ -48,7 +48,6 @@ export default function CartPage() {
   const [error, setError] = useState("");
   const [showDetails, setShowDetails] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const [cartHydrated, setCartHydrated] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const reducedMotion = useReducedMotion();
   const tableGuard = useTableGuard({
@@ -64,14 +63,7 @@ export default function CartPage() {
   }, [cafeInfo]);
 
   useEffect(() => {
-    if (!cafeId || !Number.isFinite(tableNumber)) {
-      setCart([]);
-      setHydrated(false);
-      setCartHydrated(false);
-      return;
-    }
-
-    setCartHydrated(false);
+    if (!cafeId || !tableNumber) return;
     try {
       const rawCart = localStorage.getItem(cartKey(cafeId, tableNumber));
       setCart(rawCart ? JSON.parse(rawCart) : []);
@@ -90,8 +82,6 @@ export default function CartPage() {
       setCustomerName("");
       setCustomerPhone("");
     }
-
-    setCartHydrated(true);
     setHydrated(true);
   }, [cafeId, tableNumber]);
 
@@ -139,10 +129,10 @@ export default function CartPage() {
   }, [cafeId, tableNumber, customerName, customerPhone]);
 
   useEffect(() => {
-    if (!cartHydrated) return;
-    if (!cafeId || !Number.isFinite(tableNumber)) return;
+    if (!cafeId || !tableNumber) return;
+    if (!hydrated) return;
     localStorage.setItem(cartKey(cafeId, tableNumber), JSON.stringify(cart));
-  }, [cartHydrated, cart, cafeId, tableNumber]);
+  }, [cart, cafeId, tableNumber, hydrated]);
 
   const subtotal = cart.reduce((sum, x) => sum + x.price * x.qty, 0);
   const taxRate = Number(cafeInfo?.taxPercent || 0);
@@ -272,19 +262,24 @@ export default function CartPage() {
     <main className="min-h-screen">
       <div className="sticky top-0 z-20 border-b border-white/60 bg-white/85 backdrop-blur">
         <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2 px-4 py-3">
-          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-white shadow ring-2 ring-white">
-            {cafeInfo?.logoUrl ? (
-              <img src={cafeInfo.logoUrl} alt={cafeInfo?.name || "Cafe"} className="h-full w-full object-cover" />
-            ) : (
-              <div className="h-full w-full bg-gradient-to-br from-orange-200 to-amber-200" />
-            )}
-          </div>
+          <Button variant="outline" className="h-9 w-9 shrink-0 rounded-full p-0" onClick={() => router.push(`/${cafeId}/menu?table=${tableNumber}&t=${encodeURIComponent(tableToken)}`)}>
+            <ArrowLeft size={18} className="text-slate-900" />
+          </Button>
           <div className="min-w-0 flex-1 text-center">
             <div className="text-xs text-slate-500">Table {tableNumber || "?"}</div>
             <div className="text-sm font-semibold text-slate-900">Review your order</div>
+            <div className="mt-2 flex items-center justify-center">
+              <div className="h-10 w-10 rounded-full bg-white shadow ring-2 ring-white overflow-hidden">
+                {cafeInfo?.logoUrl ? (
+                  <img src={cafeInfo.logoUrl} alt={cafeInfo?.name || "Cafe"} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-br from-orange-200 to-amber-200" />
+                )}
+              </div>
+            </div>
           </div>
           <div className="flex shrink-0 justify-end">
-            <SoundControl showVibrate={false} />
+            <SoundControl />
           </div>
         </div>
       </div>
@@ -319,7 +314,7 @@ export default function CartPage() {
                           className="h-8 w-8 rounded-full p-0"
                           onClick={() => updateQty(x._id, -1)}
                         >
-                          <span className="text-base font-bold leading-none text-slate-900">-</span>
+                          <Minus size={16} />
                         </Button>
                         <div className="min-w-8 text-center text-sm font-semibold">{x.qty}</div>
                         <Button
@@ -328,7 +323,7 @@ export default function CartPage() {
                           className="h-8 w-8 rounded-full p-0"
                           onClick={() => updateQty(x._id, 1)}
                         >
-                          <span className="text-base font-bold leading-none text-slate-900">+</span>
+                          <Plus size={16} />
                         </Button>
                       </div>
                     </div>
