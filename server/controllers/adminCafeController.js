@@ -68,16 +68,34 @@ exports.updateCafe = async (req, res) => {
         .filter((s) => typeof s === "string")
         .map((s) => s);
     }
+
+    let incomingLen = 0;
+    let filteredLen = 0;
+    let filteredFirst = null;
+
     if (Array.isArray(req.body.showcaseNonSmokingShots)) {
+      incomingLen = req.body.showcaseNonSmokingShots.length;
       updates.showcaseNonSmokingShots = req.body.showcaseNonSmokingShots
         .filter((s) => typeof s === "string")
-        .map((s) => s);
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      filteredLen = updates.showcaseNonSmokingShots.length;
+      filteredFirst = updates.showcaseNonSmokingShots[0] || null;
     }
 
-    const cafe = await Cafe.findByIdAndUpdate(cafeId, updates, { new: true });
+    const cafe = await Cafe.findByIdAndUpdate(cafeId, updates, { new: true, strict: false });
     if (!cafe) return res.status(404).json({ message: "Cafe not found" });
 
-    return res.json(cafe);
+    // Return debug info only (does not persist to Mongo)
+    const debug = {
+      receivedIsArray: Array.isArray(req.body.showcaseNonSmokingShots),
+      receivedLen: incomingLen,
+      filteredLen,
+      filteredFirst,
+      controller: "adminCafeController.updateCafe",
+    };
+
+    return res.json({ ...(cafe?.toObject ? cafe.toObject() : cafe), __debugNonSmoking: debug });
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
   }

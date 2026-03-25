@@ -142,10 +142,13 @@ exports.updateCafe = async (req, res) => {
       updates.showcaseCommunityShots = showcaseCommunityShots.filter((s) => typeof s === "string").map((s) => s);
     }
     if (Array.isArray(showcaseNonSmokingShots)) {
-      updates.showcaseNonSmokingShots = showcaseNonSmokingShots.filter((s) => typeof s === "string").map((s) => s);
+      updates.showcaseNonSmokingShots = showcaseNonSmokingShots
+        .filter((s) => typeof s === "string")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
     }
 
-    const cafe = await Cafe.findByIdAndUpdate(req.params.id, updates, { new: true });
+    const cafe = await Cafe.findByIdAndUpdate(req.params.id, updates, { new: true, strict: false });
     if (!cafe) return res.status(404).json({ message: "Cafe not found" });
     return res.json(cafe);
   } catch (error) {

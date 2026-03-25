@@ -1,5 +1,16 @@
 const MenuItem = require('../models/MenuItem');
-const { parse } = require("csv-parse/sync");
+let parse = null;
+try {
+    // csv-parse v5 supports sync parsing from `csv-parse/sync`
+    ({ parse } = require("csv-parse/sync"));
+} catch (e) {
+    try {
+        // Some builds expose it from this path
+        ({ parse } = require("csv-parse/lib/sync"));
+    } catch (e2) {
+        parse = null; // handled at runtime only for CSV endpoints
+    }
+}
 
 const getCafeIdFromRequest = (req) => req.params.cafeId || req.query.cafeId || req.body.cafeId;
 const getCafeIdForWrite = (req) => {
@@ -168,6 +179,11 @@ function validateMenuCsv(records) {
 }
 
 function parseCsvBuffer(fileBuffer) {
+    if (!parse) {
+        throw new Error(
+            'CSV parser is not available. Ensure `csv-parse/sync` is installed correctly on the server.'
+        );
+    }
     const csvText = fileBuffer.toString("utf8");
     return parse(csvText, {
         columns: true,
