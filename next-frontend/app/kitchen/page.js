@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../lib/api";
 import { isOrderInLocalToday, ordersTodayQueryString } from "../../lib/staffOrderRange";
@@ -27,6 +27,17 @@ function upsertOrder(list, order) {
   return copy;
 }
 
+function getOrderTotal(order, cafeInfo) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const lineSum = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+  const hasServerPricing = typeof order?.subtotalAmount === "number" && typeof order?.taxAmount === "number";
+  const subtotal = hasServerPricing ? Number(order.subtotalAmount) : Number(order?.totalAmount || lineSum);
+  const discount = typeof order?.discountAmount === "number" ? Number(order.discountAmount) : 0;
+  const taxRate = Number(cafeInfo?.taxPercent || 0);
+  const taxAmount = hasServerPricing ? Number(order.taxAmount || 0) : subtotal * (taxRate / 100);
+  return hasServerPricing ? Number(order?.totalAmount || 0) : Math.max(0, subtotal + taxAmount - discount);
+}
+
 export default function KitchenPage() {
   const { token, user, ready: authReady } = useClientAuth();
   const role = user?.role || "";
@@ -37,6 +48,7 @@ export default function KitchenPage() {
   const cafeId = useMemo(() => cafeIdOverride || user?.cafeId || "", [cafeIdOverride, user?.cafeId]);
 
   const [orders, setOrders] = useState([]);
+  const [todayOrders, setTodayOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [socketState, setSocketState] = useState("disconnected");
@@ -47,23 +59,27 @@ export default function KitchenPage() {
     const total = orders.length;
     const queue = orders.filter((o) => ["pending", "accepted"].includes(o.status)).length;
     const preparing = orders.filter((o) => ["preparing", "baking"].includes(o.status)).length;
-    return { total, queue, preparing };
-  }, [orders]);
+    const todayTotalOrders = todayOrders.length;
+    const todayRevenue = todayOrders.reduce((sum, order) => sum + getOrderTotal(order, cafeInfo), 0);
+    return { total, queue, preparing, todayTotalOrders, todayRevenue };
+  }, [orders, todayOrders, cafeInfo]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!cafeId) return;
     setLoading(true);
     setError("");
     try {
       const qs = ordersTodayQueryString();
       const list = await apiFetch(`/api/orders/${cafeId}?${qs}`, { headers: { ...(token ? authHeaders() : {}) } });
-      setOrders(filterKitchenLiveOrders(Array.isArray(list) ? list : []));
+      const normalizedList = Array.isArray(list) ? list : [];
+      setTodayOrders(normalizedList);
+      setOrders(filterKitchenLiveOrders(normalizedList));
     } catch (e) {
       setError(e.message || "Failed to load orders");
     } finally {
       setLoading(false);
     }
-  };
+  }, [cafeId, token]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -78,7 +94,7 @@ export default function KitchenPage() {
 
   useEffect(() => {
     if (cafeId) load();
-  }, [cafeId]);
+  }, [cafeId, load]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +124,7 @@ export default function KitchenPage() {
 
     const merge = (order) => {
       if (!isOrderInLocalToday(order)) return;
+      setTodayOrders((prev) => upsertOrder(prev, order));
       if (!isKitchenLiveOrder(order)) {
         setOrders((prev) => prev.filter((o) => o._id !== order._id));
         return;
@@ -147,6 +164,7 @@ export default function KitchenPage() {
         const next = prev.map((o) => (o._id === updated._id ? updated : o));
         return filterKitchenLiveOrders(next);
       });
+      setTodayOrders((prev) => upsertOrder(prev, updated));
     } catch (e) {
       setError(e.message || "Failed to update order");
     } finally {
@@ -187,7 +205,15 @@ export default function KitchenPage() {
     >
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
+              <div className="text-xl font-bold text-slate-900">{stats.todayTotalOrders}</div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Today's Orders</div>
+            </div>
+            <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
+              <div className="text-xl font-bold text-slate-900">INR {stats.todayRevenue.toFixed(0)}</div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Today's Revenue</div>
+            </div>
             <div className="rounded-2xl border border-orange-100 bg-white/80 px-4 py-3 text-center shadow-sm">
               <div className="text-xl font-bold text-slate-900">{stats.total}</div>
               <div className="text-xs uppercase tracking-wide text-slate-500">Active</div>
@@ -324,17 +350,37 @@ export default function KitchenPage() {
                     );
                   })()}
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => setStatus(o._id, "accepted")} disabled={loading}>
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center"
+                      onClick={() => setStatus(o._id, "accepted")}
+                      disabled={loading}
+                    >
                       Accepted
                     </Button>
-                    <Button variant="outline" onClick={() => setStatus(o._id, "preparing")} disabled={loading}>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center"
+                      onClick={() => setStatus(o._id, "preparing")}
+                      disabled={loading}
+                    >
                       Preparing
                     </Button>
-                    <Button variant="outline" onClick={() => setStatus(o._id, "ready")} disabled={loading}>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center"
+                      onClick={() => setStatus(o._id, "ready")}
+                      disabled={loading}
+                    >
                       Ready
                     </Button>
-                    <Button variant="outline" onClick={() => setStatus(o._id, "rejected")} disabled={loading}>
+                    <Button
+                      variant="danger"
+                      className="w-full justify-center"
+                      onClick={() => setStatus(o._id, "rejected")}
+                      disabled={loading}
+                    >
                       Reject
                     </Button>
                   </div>
