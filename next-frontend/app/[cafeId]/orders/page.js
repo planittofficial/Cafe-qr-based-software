@@ -16,7 +16,7 @@ import StaffAlertBanner from "../../../components/StaffAlertBanner";
 import { AppLoading } from "../../../components/AppLoading";
 import { useTableGuard } from "../../../lib/useTableGuard";
 
-const statusSteps = ["pending", "accepted", "preparing", "ready", "served", "paid"];
+const statusSteps = ["pending", "accepted", "preparing", "ready", "served", "paid", "rejected"];
 
 export default function OrdersPage() {
   const params = useParams();
@@ -129,8 +129,8 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!cafeId || !tableNumber || orders.length === 0) return;
-    const allPaid = orders.every((o) => o.status === "paid");
-    if (!allPaid) return;
+    const allClosed = orders.every((o) => ["paid", "rejected"].includes(o.status));
+    if (!allClosed) return;
     const next = rotateVisitId(cafeId, Number(tableNumber));
     if (next) setVisitId(next);
     setOrders([]);

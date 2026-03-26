@@ -261,8 +261,8 @@ export default function AdminMenuPage() {
     const totalRevenue = byDay.reduce((sum, day) => sum + Number(day?.revenue || 0), 0);
     const openOrders = Array.isArray(analytics?.statusBreakdown)
       ? analytics.statusBreakdown.reduce((sum, row) => {
-          const status = String(row?._id || "").toLowerCase();
-          if (status === "paid" || status === "cancelled") return sum;
+        const status = String(row?._id || "").toLowerCase();
+          if (status === "paid" || status === "cancelled" || status === "rejected") return sum;
           return sum + Number(row?.count || 0);
         }, 0)
       : 0;

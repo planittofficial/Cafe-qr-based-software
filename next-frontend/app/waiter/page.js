@@ -163,7 +163,7 @@ export default function WaiterPage() {
       .map(
         (it) => `
           <tr>
-            <td>${it.name}</td>
+            <td class="item-name">${it.name}</td>
             <td class="qty">${it.qty}</td>
             <td class="price">INR ${(Number(it.price || 0) * Number(it.qty || 0)).toFixed(2)}</td>
           </tr>
@@ -188,35 +188,194 @@ export default function WaiterPage() {
     const total = hasServerPricing ? Number(order.totalAmount || 0) : Math.max(0, subtotal + tax - discount);
     const cafeName = cafeInfo?.name || "QRDine";
     const cafeLogo = cafeInfo?.logoUrl || "";
+    const orderNote = typeof order?.notes === "string" ? order.notes.trim() : "";
 
     const html = `
       <!doctype html>
       <html>
         <head>
           <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Receipt #${orderIdShort}</title>
           <style>
-            @page { size: 80mm auto; margin: 8mm; }
-            body { font-family: "Arial", sans-serif; color: #111827; }
-            h1 { font-size: 16px; margin: 0 0 6px; }
-            .meta { font-size: 12px; margin-bottom: 10px; color: #374151; }
-            .meta div { margin: 2px 0; }
-            .logo { display: block; margin: 0 auto 8px; max-width: 120px; max-height: 60px; object-fit: contain; }
-            .cafe-name { text-align: center; font-weight: 700; margin-bottom: 6px; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { padding: 6px 0; border-bottom: 1px dashed #e5e7eb; }
-            th { text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280; }
-            td.qty { text-align: center; width: 24px; }
-            td.price { text-align: right; width: 70px; }
-            .total { margin-top: 10px; display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
-            .line { margin-top: 6px; display: flex; justify-content: space-between; font-size: 12px; color: #374151; }
-            .footer { margin-top: 8px; font-size: 11px; color: #6b7280; text-align: center; }
+            @page {
+              size: 80mm auto;
+              margin: 3mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              color: #111827;
+              font-family: "Courier New", Courier, monospace;
+              font-size: 11px;
+              line-height: 1.35;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+
+            body {
+              width: 74mm;
+              margin: 0 auto;
+              padding: 2mm 0;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 15px;
+              text-align: center;
+              letter-spacing: 0.04em;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .logo {
+              display: block;
+              margin: 0 auto 6px;
+              max-width: 110px;
+              max-height: 48px;
+              object-fit: contain;
+            }
+
+            .cafe-name {
+              margin-bottom: 4px;
+              font-size: 14px;
+              font-weight: 700;
+              text-align: center;
+              text-transform: uppercase;
+              word-break: break-word;
+            }
+
+            .meta {
+              margin-top: 8px;
+            }
+
+            .meta div {
+              margin: 1px 0;
+              word-break: break-word;
+            }
+
+            .divider {
+              margin: 8px 0;
+              border-top: 1px dashed #111827;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+
+            th, td {
+              padding: 4px 0;
+              vertical-align: top;
+            }
+
+            th {
+              font-size: 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+              text-align: left;
+              border-bottom: 1px dashed #111827;
+            }
+
+            .item-name {
+              width: 58%;
+              padding-right: 6px;
+              word-break: break-word;
+            }
+
+            .qty {
+              width: 12%;
+              text-align: center;
+            }
+
+            .price {
+              width: 30%;
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .summary {
+              margin-top: 8px;
+            }
+
+            .line {
+              display: flex;
+              align-items: flex-start;
+              justify-content: space-between;
+              gap: 12px;
+              margin-top: 4px;
+            }
+
+            .line span:first-child {
+              flex: 1 1 auto;
+            }
+
+            .line span:last-child {
+              flex: 0 0 auto;
+              white-space: nowrap;
+              text-align: right;
+            }
+
+            .total {
+              margin-top: 6px;
+              padding-top: 6px;
+              border-top: 1px dashed #111827;
+              font-size: 13px;
+              font-weight: 700;
+            }
+
+            .note-box {
+              margin-top: 8px;
+              padding-top: 6px;
+              border-top: 1px dashed #111827;
+            }
+
+            .note-title {
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+            }
+
+            .note-text {
+              margin-top: 3px;
+              word-break: break-word;
+              white-space: pre-wrap;
+            }
+
+            .footer {
+              margin-top: 10px;
+              padding-top: 6px;
+              border-top: 1px dashed #111827;
+              text-align: center;
+              font-size: 10px;
+            }
+
+            @media print {
+              html, body {
+                width: 80mm;
+              }
+
+              body {
+                width: 74mm;
+              }
+            }
           </style>
         </head>
         <body>
           ${cafeLogo ? `<img class="logo" src="${cafeLogo}" alt="Cafe logo" />` : ""}
           <div class="cafe-name">${cafeName}</div>
           <h1>Receipt</h1>
+          <div class="center">--------------------------------</div>
           <div class="meta">
             <div>Order: #${orderIdShort}</div>
             <div>Table: ${order.tableNumber}</div>
@@ -224,6 +383,7 @@ export default function WaiterPage() {
             <div>Phone: ${order.phone || "-"}</div>
             <div>Date: ${createdAt}</div>
           </div>
+          <div class="divider"></div>
           <table>
             <thead>
               <tr>
@@ -236,28 +396,39 @@ export default function WaiterPage() {
               ${itemsRows}
             </tbody>
           </table>
-          <div class="line">
-            <span>Subtotal</span>
-            <span>INR ${subtotal.toFixed(2)}</span>
+          <div class="summary">
+            <div class="line">
+              <span>Subtotal</span>
+              <span>INR ${subtotal.toFixed(2)}</span>
+            </div>
+            <div class="line">
+              <span>Tax (${taxRate.toFixed(2)}%)</span>
+              <span>INR ${tax.toFixed(2)}</span>
+            </div>
+            <div class="line">
+              <span>Discount (${discountType === "fixed" ? "INR" : `${discountValue.toFixed(2)}%`})</span>
+              <span>INR ${discount.toFixed(2)}</span>
+            </div>
+            <div class="line total">
+              <span>Total</span>
+              <span>INR ${total.toFixed(2)}</span>
+            </div>
           </div>
-          <div class="line">
-            <span>Tax (${taxRate.toFixed(2)}%)</span>
-            <span>INR ${tax.toFixed(2)}</span>
+          ${orderNote ? `
+            <div class="note-box">
+              <div class="note-title">Order note</div>
+              <div class="note-text">${orderNote}</div>
+            </div>
+          ` : ""}
+          <div class="footer">
+            <div>Payment: ${String(order.paymentMode || "cash").toUpperCase()}</div>
+            <div>Generated by QRDine</div>
           </div>
-          <div class="line">
-            <span>Discount (${discountType === "fixed" ? "INR" : `${discountValue.toFixed(2)}%`})</span>
-            <span>INR ${discount.toFixed(2)}</span>
-          </div>
-          <div class="total">
-            <span>Total</span>
-            <span>INR ${total.toFixed(2)}</span>
-          </div>
-          <div class="footer">Generated by QRDine</div>
         </body>
       </html>
     `;
 
-    const receiptWindow = window.open("", "_blank", "width=480,height=640");
+    const receiptWindow = window.open("", "_blank", "width=420,height=720");
     if (!receiptWindow) return;
     receiptWindow.document.open();
     receiptWindow.document.write(html);
@@ -447,6 +618,9 @@ export default function WaiterPage() {
                     </Button>
                     <Button variant="outline" onClick={() => setStatus(o._id, "paid")} disabled={loading}>
                       Paid
+                    </Button>
+                    <Button variant="outline" onClick={() => setStatus(o._id, "rejected")} disabled={loading}>
+                      Reject
                     </Button>
                     <Button variant="outline" onClick={() => downloadReceiptPdf(o)} disabled={loading}>
                       Download PDF

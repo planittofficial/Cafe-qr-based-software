@@ -102,7 +102,7 @@ function emitCafeEvent(cafeId, event, payload) {
     emitToRole(id, ROLE_ROOMS.kitchen, event, payload);
     emitToRole(id, ROLE_ROOMS.cafe_admin, event, payload);
     emitToRole(id, ROLE_ROOMS.super_admin, event, payload);
-    if (payload?.status && ["ready", "served", "paid"].includes(payload.status)) {
+    if (payload?.status && ["ready", "served", "paid", "rejected"].includes(payload.status)) {
       emitToRole(id, ROLE_ROOMS.staff, event, payload);
     }
     io.to(`cafe:${id}`).emit(event, payload);

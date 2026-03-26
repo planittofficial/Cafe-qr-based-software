@@ -342,9 +342,9 @@ export default function OrderStatusPage() {
                       UPI
                     </button>
                   </div>
-                  <div className="mt-2 text-xs text-slate-600">
+                  <div className="mt-2 text-xs font-bold text-slate-700">
                     {paymentChoice === "cash"
-                      ? "Cash will be collected by the waiter."
+                      ? "Cash will be collected on counter."
                       : "Scan the QR to pay via UPI."}
                   </div>
                   {paymentChoice === "upi" && (

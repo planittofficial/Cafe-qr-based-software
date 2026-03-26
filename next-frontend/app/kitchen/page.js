@@ -334,6 +334,9 @@ export default function KitchenPage() {
                     <Button variant="outline" onClick={() => setStatus(o._id, "ready")} disabled={loading}>
                       Ready
                     </Button>
+                    <Button variant="outline" onClick={() => setStatus(o._id, "rejected")} disabled={loading}>
+                      Reject
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

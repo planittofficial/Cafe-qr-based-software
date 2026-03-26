@@ -272,7 +272,7 @@ exports.updateOrder = async (req, res) => {
       if (order.status === "paid") emitCafeEvent(order.cafeId, "ORDER_PAID", order);
     }
 
-    if (["served", "paid"].includes(order.status)) {
+    if (["served", "paid", "rejected"].includes(order.status)) {
       await Table.findOneAndUpdate(
         { cafeId: order.cafeId, tableNumber: order.tableNumber },
         { $set: { status: "free" } }
