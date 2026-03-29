@@ -32,8 +32,8 @@ const allowedOrigins = [
   "http://localhost:5000",
   "http://localhost:3000",
   "https://cafe-qr-based-software.onrender.com",
-  "https://www.coffeeculturenagpur.com/",
-  "https://cafe-qr-based-software.vercel.app/",
+  "https://www.coffeeculturenagpur.com",
+  "https://cafe-qr-based-software.vercel.app",
 ];
 
 function isAllowedOrigin(origin) {
