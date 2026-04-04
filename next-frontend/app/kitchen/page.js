@@ -571,8 +571,15 @@ export default function KitchenPage() {
           {filteredOrders.map((o) => {
             const isManual = o.source === "manual";
             const statusPalette = getOrderStatusPalette(o.status);
+            const needsAttention = statusPalette.normalized === "pending";
             return (
-            <motion.div key={o._id} initial={motionInitial} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="min-w-0">
+            <motion.div
+              key={o._id}
+              initial={motionInitial}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className={`min-w-0 ${needsAttention ? "kitchen-order-attention" : ""}`}
+            >
               <Card
                 className={`overflow-hidden shadow-lg transition ${statusPalette.card}`}
               >
