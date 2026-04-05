@@ -112,10 +112,11 @@ async function buildResolvedOrderPayload(cafeId, items) {
   return { cafe, resolvedItems, subtotalAmount, discountAmount, taxAmount, totalAmount };
 }
 
-function buildCustomerOrderOwnershipQuery({ sessionId, customerId }) {
+function buildCustomerOrderOwnershipQuery({ sessionId, customerId, visitId }) {
   const ownership = [];
   if (sessionId) ownership.push({ sessionId });
   if (customerId) ownership.push({ customerId });
+  if (visitId) ownership.push({ visitId });
   return ownership;
 }
 
@@ -318,6 +319,7 @@ exports.listMyOrdersInCafe = async (req, res) => {
     const { cafeId } = req.params;
     const tableNumber = req.query.tableNumber || req.query.table || "";
     const token = req.query.t || req.query.tableToken || "";
+    const visitId = typeof req.query.visitId === "string" ? req.query.visitId.trim() : "";
 
     if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
     if (!tableNumber) return res.status(400).json({ message: "tableNumber is required" });
@@ -328,7 +330,7 @@ exports.listMyOrdersInCafe = async (req, res) => {
     const sessionId = req.sessionId || "";
     const current = await getCurrentCustomer(req).catch(() => null);
     const customerId = current?.customer?._id || null;
-    const ownership = buildCustomerOrderOwnershipQuery({ sessionId, customerId });
+    const ownership = buildCustomerOrderOwnershipQuery({ sessionId, customerId, visitId });
     if (ownership.length === 0) return res.json([]);
     const trackedOrderIds = await getTrackedOrderIds({ sessionId, customerId });
 
@@ -420,6 +422,7 @@ exports.getOrderById = async (req, res) => {
     const { cafeId, id } = req.params;
     const tableNumber = req.query.tableNumber || req.query.table || "";
     const token = req.query.t || req.query.tableToken || "";
+    const visitId = typeof req.query.visitId === "string" ? req.query.visitId.trim() : "";
     if (!tableNumber) return res.status(400).json({ message: "tableNumber is required" });
     if (!verifyTableToken(cafeId, tableNumber, token)) {
       return res.status(403).json({ message: "Invalid table token" });
@@ -427,7 +430,7 @@ exports.getOrderById = async (req, res) => {
     const sessionId = req.sessionId || "";
     const current = await getCurrentCustomer(req).catch(() => null);
     const customerId = current?.customer?._id || null;
-    const ownership = buildCustomerOrderOwnershipQuery({ sessionId, customerId });
+    const ownership = buildCustomerOrderOwnershipQuery({ sessionId, customerId, visitId });
     if (ownership.length === 0) {
       return res.status(403).json({ message: "Could not determine customer session" });
     }

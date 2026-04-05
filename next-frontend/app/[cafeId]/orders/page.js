@@ -17,6 +17,7 @@ import StaffAlertBanner from "../../../components/StaffAlertBanner";
 import { AppLoading } from "../../../components/AppLoading";
 import { useTableGuard } from "../../../lib/useTableGuard";
 import { getCafeWithCache } from "../../../lib/cafeClient";
+import { peekVisitId } from "../../../lib/visitSession";
 
 const statusSteps = ["pending", "accepted", "preparing", "ready", "served", "paid", "rejected"];
 
@@ -54,6 +55,8 @@ export default function OrdersPage() {
         table: String(tableNumber),
         t: tableToken,
       });
+      const visitId = peekVisitId(cafeId, tableNumber);
+      if (visitId) q.set("visitId", visitId);
       const data = await apiFetch(`/api/orders/${cafeId}/mine?${q.toString()}`, { credentials: "include" });
       setOrders(Array.isArray(data) ? data : []);
     } catch (e) {

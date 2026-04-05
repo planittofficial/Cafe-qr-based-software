@@ -16,6 +16,7 @@ import { AppLoading } from "../../../../components/AppLoading";
 import { useTableGuard } from "../../../../lib/useTableGuard";
 import { setCssVarsFromCafe } from "../../../../lib/theme";
 import { getCafeWithCache } from "../../../../lib/cafeClient";
+import { peekVisitId } from "../../../../lib/visitSession";
 
 const displaySteps = [
   { key: "accepted", label: "Order Accepted" },
@@ -64,6 +65,8 @@ export default function OrderStatusPage() {
         table: String(tableNumber || ""),
         t: tableToken,
       });
+      const visitId = peekVisitId(cafeId, tableNumber);
+      if (visitId) q.set("visitId", visitId);
       const found = await apiFetch(`/api/orders/${cafeId}/id/${orderId}?${q.toString()}`, { credentials: "include" });
       setOrder(found || null);
     } catch (e) {

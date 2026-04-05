@@ -41,6 +41,26 @@ function lineItemTotal(item) {
   return Number(item?.price || 0) * Number(item?.qty || 0);
 }
 
+function kitchenActionButtonClass(kind) {
+  const shared = "min-h-[42px] w-full justify-center border font-black tracking-[0.02em] shadow-sm";
+  if (kind === "edit") {
+    return `${shared} border-slate-300 bg-white text-slate-900 hover:bg-slate-100`;
+  }
+  if (kind === "accepted") {
+    return `${shared} border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100`;
+  }
+  if (kind === "preparing") {
+    return `${shared} border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100`;
+  }
+  if (kind === "ready") {
+    return `${shared} border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100`;
+  }
+  if (kind === "rejected") {
+    return `${shared} border-red-200 bg-red-50 text-red-800 hover:bg-red-100`;
+  }
+  return shared;
+}
+
 function upsertOrder(list, order) {
   const idx = list.findIndex((x) => x._id === order._id);
   if (idx === -1) return [order, ...list];
@@ -1112,22 +1132,27 @@ export default function KitchenPage() {
                           </div>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                          <Button variant="outline" size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" type="button" onClick={() => openEditOrderEditor(o)} disabled={loading || editorSaving}>
+                        <div className="mt-4 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-slate-50 via-white to-orange-50/60 p-2.5 shadow-inner">
+                          <div className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">
+                            Quick Actions
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                          <Button variant="outline" size="sm" className={kitchenActionButtonClass("edit")} type="button" onClick={() => openEditOrderEditor(o)} disabled={loading || editorSaving}>
                             Edit
                           </Button>
-                          <Button variant="outline" size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" onClick={() => setStatus(o._id, "accepted")} disabled={loading}>
+                          <Button variant="outline" size="sm" className={kitchenActionButtonClass("accepted")} onClick={() => setStatus(o._id, "accepted")} disabled={loading}>
                             Accept
                           </Button>
-                          <Button variant="outline" size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" onClick={() => setStatus(o._id, "preparing")} disabled={loading}>
+                          <Button variant="outline" size="sm" className={kitchenActionButtonClass("preparing")} onClick={() => setStatus(o._id, "preparing")} disabled={loading}>
                             Preparing
                           </Button>
-                          <Button variant="outline" size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" onClick={() => setStatus(o._id, "ready")} disabled={loading}>
+                          <Button variant="outline" size="sm" className={kitchenActionButtonClass("ready")} onClick={() => setStatus(o._id, "ready")} disabled={loading}>
                             Ready
                           </Button>
-                          <Button variant="danger" size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" onClick={() => setStatus(o._id, "rejected")} disabled={loading}>
+                          <Button variant="danger" size="sm" className={kitchenActionButtonClass("rejected")} onClick={() => setStatus(o._id, "rejected")} disabled={loading}>
                             Reject
                           </Button>
+                          </div>
                         </div>
                       </div>
                     </div>

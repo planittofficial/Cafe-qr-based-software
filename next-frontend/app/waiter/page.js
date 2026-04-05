@@ -41,6 +41,23 @@ function getOrderTotal(order, cafeInfo) {
   return hasServerPricing ? Number(order?.totalAmount || 0) : Math.max(0, subtotal + tax - discount);
 }
 
+function waiterActionButtonClass(kind) {
+  const shared = "min-h-[42px] w-full justify-center border font-black tracking-[0.02em] shadow-sm";
+  if (kind === "served") {
+    return `${shared} border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100`;
+  }
+  if (kind === "paid") {
+    return `${shared} border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100`;
+  }
+  if (kind === "rejected") {
+    return `${shared} border-red-200 bg-red-50 text-red-800 hover:bg-red-100`;
+  }
+  if (kind === "pdf") {
+    return `${shared} border-slate-300 bg-white text-slate-900 hover:bg-slate-100`;
+  }
+  return shared;
+}
+
 export default function WaiterPage() {
   const { token, user, ready: authReady } = useClientAuth();
   const role = user?.role || "";
@@ -1023,19 +1040,24 @@ export default function WaiterPage() {
                           </div>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          <Button size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" variant="outline" onClick={() => handleStatusAction(o._id, "served")} disabled={loading}>
+                        <div className="mt-4 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-slate-50 via-white to-sky-50/60 p-2.5 shadow-inner">
+                          <div className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">
+                            Quick Actions
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <Button size="sm" className={waiterActionButtonClass("served")} variant="outline" onClick={() => handleStatusAction(o._id, "served")} disabled={loading}>
                             Served
                           </Button>
-                          <Button size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" variant="outline" onClick={() => handleStatusAction(o._id, "paid")} disabled={loading}>
+                          <Button size="sm" className={waiterActionButtonClass("paid")} variant="outline" onClick={() => handleStatusAction(o._id, "paid")} disabled={loading}>
                             Paid
                           </Button>
-                          <Button size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" variant="outline" onClick={() => handleStatusAction(o._id, "rejected")} disabled={loading}>
+                          <Button size="sm" className={waiterActionButtonClass("rejected")} variant="outline" onClick={() => handleStatusAction(o._id, "rejected")} disabled={loading}>
                             Reject
                           </Button>
-                          <Button size="sm" className="w-full justify-center py-1.5 text-[11px] font-extrabold" variant="outline" onClick={() => downloadReceiptPdf(o)} disabled={loading}>
+                          <Button size="sm" className={waiterActionButtonClass("pdf")} variant="outline" onClick={() => downloadReceiptPdf(o)} disabled={loading}>
                             PDF
                           </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
