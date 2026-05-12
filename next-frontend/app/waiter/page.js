@@ -19,6 +19,7 @@ import { Input } from "../../components/ui/Input";
 import { AppLoading } from "../../components/AppLoading";
 import { groupOrdersByTable } from "../../lib/orderGrouping";
 import { getOrderStatusPalette } from "../../lib/orderStatusPalette";
+import { formatOrderAcceptToServe } from "../../lib/orderTiming";
 import { TableStatusPad } from "../../components/staff/TableStatusPad";
 import { ChevronDown, X } from "lucide-react";
 
@@ -752,6 +753,9 @@ export default function WaiterPage() {
                                 Payment: {String(o.paymentMode).toUpperCase()}
                               </div>
                             )}
+                            <div className={`mt-1 text-[11px] font-semibold ${orderPalette.mutedTextClassName || "text-slate-600"}`}>
+                              Accepted to served: {formatOrderAcceptToServe(o)}
+                            </div>
 
                             {o.notes ? (
                               <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
@@ -1008,6 +1012,10 @@ export default function WaiterPage() {
                                 <div className="mt-1 font-bold">{String(o.paymentMode).toUpperCase()}</div>
                               </div>
                             ) : null}
+                            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800">
+                              <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Accepted to Served</div>
+                              <div className="mt-1 font-bold">{formatOrderAcceptToServe(o)}</div>
+                            </div>
                             {o.notes ? (
                               <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
                                 <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-amber-700">Order Note</div>

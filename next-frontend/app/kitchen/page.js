@@ -28,6 +28,7 @@ import { getCafeWithCache } from "../../lib/cafeClient";
 import { getMenuWithCache } from "../../lib/menuClient";
 import { getOrderStatusPalette } from "../../lib/orderStatusPalette";
 import { groupOrdersByTable } from "../../lib/orderGrouping";
+import { formatOrderAcceptToServe } from "../../lib/orderTiming";
 import { TableStatusPad } from "../../components/staff/TableStatusPad";
 import { ChevronDown, ClipboardList, QrCode, X } from "lucide-react";
 
@@ -788,6 +789,9 @@ export default function KitchenPage() {
                                   Payment: {String(o.paymentMode).toUpperCase()}
                                 </div>
                               )}
+                              <div className={`mt-1 text-[11px] font-semibold ${orderPalette.mutedTextClassName || "text-slate-600"}`}>
+                                Accepted to served: {formatOrderAcceptToServe(o)}
+                              </div>
 
                               {o.notes ? (
                                 <div className="mt-1.5 max-h-20 overflow-y-auto rounded-md border border-amber-200/90 bg-amber-50/90 px-2 py-1.5 text-[11px] text-amber-950">
@@ -1119,6 +1123,10 @@ export default function KitchenPage() {
                                 <div className="mt-1 font-bold">{String(o.paymentMode).toUpperCase()}</div>
                               </div>
                             ) : null}
+                            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800">
+                              <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Accepted to Served</div>
+                              <div className="mt-1 font-bold">{formatOrderAcceptToServe(o)}</div>
+                            </div>
                             {o.notes ? (
                               <div className="rounded-xl border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-[13px] text-amber-950">
                                 <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-amber-800">Order Note</div>

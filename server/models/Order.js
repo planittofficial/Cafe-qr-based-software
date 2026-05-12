@@ -53,6 +53,9 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
+    acceptedAt: { type: Date, default: null },
+    servedAt: { type: Date, default: null },
+    acceptToServeMs: { type: Number, default: null, min: 0 },
     paidAt: { type: Date, default: null },
   },
   { timestamps: true }

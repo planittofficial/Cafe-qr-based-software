@@ -17,6 +17,7 @@ import { useTableGuard } from "../../../../lib/useTableGuard";
 import { setCssVarsFromCafe } from "../../../../lib/theme";
 import { getCafeWithCache } from "../../../../lib/cafeClient";
 import { peekVisitId } from "../../../../lib/visitSession";
+import { formatOrderAcceptToServe } from "../../../../lib/orderTiming";
 
 const displaySteps = [
   { key: "accepted", label: "Order Accepted" },
@@ -349,6 +350,9 @@ export default function OrderStatusPage() {
               <div className="mt-4 flex justify-between text-base font-extrabold text-slate-900">
                 <span>Total (incl. tax)</span>
                 <span>INR {totalWithTax.toFixed(0)}</span>
+              </div>
+              <div className="mt-2 text-xs font-semibold text-slate-600">
+                Accepted to served: {formatOrderAcceptToServe(order)}
               </div>
 
               {["served", "paid"].includes(order.status) && (

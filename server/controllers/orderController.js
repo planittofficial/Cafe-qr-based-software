@@ -169,6 +169,42 @@ function mergeOrderNotes(existingNotes, nextNotes) {
   return `${current}\n${incoming}`;
 }
 
+function applyOrderStatusTiming(update, previousOrder = null) {
+  const nextStatus = typeof update?.status === "string" ? update.status.trim().toLowerCase() : "";
+  if (!nextStatus) return update;
+
+  const prevStatus = String(previousOrder?.status || "").toLowerCase();
+  const now = new Date();
+
+  if (nextStatus === "pending") {
+    update.acceptedAt = null;
+    update.servedAt = null;
+    update.acceptToServeMs = null;
+    return update;
+  }
+
+  if (nextStatus === "accepted" && prevStatus !== "accepted") {
+    update.acceptedAt = previousOrder?.acceptedAt || now;
+    update.servedAt = null;
+    update.acceptToServeMs = null;
+    return update;
+  }
+
+  if (nextStatus === "served" && prevStatus !== "served") {
+    const acceptedAt = previousOrder?.acceptedAt || update.acceptedAt || null;
+    const servedAt = now;
+    update.acceptedAt = acceptedAt;
+    update.servedAt = servedAt;
+    if (acceptedAt) {
+      update.acceptToServeMs = Math.max(0, servedAt.getTime() - new Date(acceptedAt).getTime());
+    } else {
+      update.acceptToServeMs = null;
+    }
+  }
+
+  return update;
+}
+
 async function findActiveOrderForMerge({ cafeId, tableNumber, sessionId, customerId, visitId }) {
   const ownership = buildCustomerOrderOwnershipQuery({ sessionId, customerId, visitId });
   if (ownership.length === 0) return null;
@@ -292,6 +328,9 @@ exports.createOrder = async (req, res) => {
       activeOrder.paymentMode = paymentValue;
       activeOrder.source = "qr";
       activeOrder.status = "pending";
+      activeOrder.acceptedAt = null;
+      activeOrder.servedAt = null;
+      activeOrder.acceptToServeMs = null;
       activeOrder.paidAt = null;
       order = await activeOrder.save();
       responseStatus = 200;
@@ -514,6 +553,16 @@ exports.createStaffOrder = async (req, res) => {
       paymentMode: normalizePaymentMode(req.body?.paymentMode, "cash"),
       source: "manual",
       status,
+      ...(status === "accepted"
+        ? { acceptedAt: new Date(), servedAt: null, acceptToServeMs: null }
+        : {}),
+      ...(status === "served"
+        ? {
+            acceptedAt: new Date(),
+            servedAt: new Date(),
+            acceptToServeMs: 0,
+          }
+        : {}),
     });
 
     await Table.findOneAndUpdate(
@@ -612,6 +661,8 @@ exports.updateOrder = async (req, res) => {
       update.taxAmount = taxAmount;
       update.totalAmount = totalAmount;
     }
+
+    applyOrderStatusTiming(update, prev);
 
     const order = await Order.findByIdAndUpdate(req.params.id, update, {
       new: true,
