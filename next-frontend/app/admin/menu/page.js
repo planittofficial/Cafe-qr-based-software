@@ -2366,13 +2366,10 @@ export default function AdminMenuPage() {
                         )}
                       </div>
                       <div className="mt-2 text-xs font-semibold text-slate-600">
-                        Accepted at: {formatOrderAcceptedAt(order)}
+                        Accepted-at: {formatOrderAcceptedAt(order)} | Served-at: {formatOrderServedAt(order)}
                       </div>
-                      <div className="mt-2 text-xs font-semibold text-slate-600">
-                        Served at: {formatOrderServedAt(order)}
-                      </div>
-                      <div className="mt-2 text-xs font-semibold text-slate-600">
-                        Accepted to served: {formatOrderAcceptToServe(order)}
+                      <div className="mt-1 text-xs font-semibold text-slate-600">
+                        Accept-Serve: {formatOrderAcceptToServe(order)}
                       </div>
                       <div className="mt-3 font-semibold text-slate-900">Total ₹{Number(order.totalAmount || 0).toFixed(2)}</div>
                     </div>

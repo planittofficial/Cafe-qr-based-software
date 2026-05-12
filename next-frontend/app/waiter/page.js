@@ -735,7 +735,7 @@ export default function WaiterPage() {
                             </div>
 
                             <div
-                              className={`mt-1.5 max-h-[min(8rem,20vh)] space-y-1 overflow-y-auto rounded-md border p-1.5 text-[12px] ${orderPalette.panelClassName || "border-slate-100"} ${orderPalette.panelTextClassName || "text-slate-900"}`}
+                              className={`mt-1.5 max-h-[5.5rem] space-y-1 overflow-y-auto rounded-md border p-1.5 text-[12px] ${orderPalette.panelClassName || "border-slate-100"} ${orderPalette.panelTextClassName || "text-slate-900"}`}
                               style={orderPalette.panelStyle}
                             >
                               {o.items.map((it, idx) => (
@@ -754,13 +754,7 @@ export default function WaiterPage() {
                               </div>
                             )}
                             <div className={`mt-1 text-[11px] font-semibold ${orderPalette.mutedTextClassName || "text-slate-600"}`}>
-                              Accepted at: {formatOrderAcceptedAt(o)}
-                            </div>
-                            <div className={`mt-1 text-[11px] font-semibold ${orderPalette.mutedTextClassName || "text-slate-600"}`}>
-                              Served at: {formatOrderServedAt(o)}
-                            </div>
-                            <div className={`mt-1 text-[11px] font-semibold ${orderPalette.mutedTextClassName || "text-slate-600"}`}>
-                              Accepted to served: {formatOrderAcceptToServe(o)}
+                              Accepted-at: {formatOrderAcceptedAt(o)} | Served-at: {formatOrderServedAt(o)} | Accept-Serve: {formatOrderAcceptToServe(o)}
                             </div>
 
                             {o.notes ? (
@@ -1019,16 +1013,12 @@ export default function WaiterPage() {
                               </div>
                             ) : null}
                             <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800">
-                              <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Accepted At</div>
-                              <div className="mt-1 font-bold">{formatOrderAcceptedAt(o)}</div>
-                            </div>
-                            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800">
-                              <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Served At</div>
-                              <div className="mt-1 font-bold">{formatOrderServedAt(o)}</div>
-                            </div>
-                            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800">
                               <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Accepted to Served</div>
                               <div className="mt-1 font-bold">{formatOrderAcceptToServe(o)}</div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[12px] text-slate-800">
+                              <div><span className="font-semibold">Accepted:</span> {formatOrderAcceptedAt(o)}</div>
+                              <div><span className="font-semibold">Served:</span> {formatOrderServedAt(o)}</div>
                             </div>
                             {o.notes ? (
                               <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
@@ -1075,7 +1065,7 @@ export default function WaiterPage() {
                           </div>
                         </div>
 
-                        <div className="mt-4 rounded-2xl border border-slate-200/90 bg-gradient-to-r from-slate-50 via-white to-sky-50/60 p-2.5 shadow-inner">
+                        <div className="mt-3 rounded-xl border border-slate-200/90 bg-white p-2">
                           <div className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">
                             Quick Actions
                           </div>

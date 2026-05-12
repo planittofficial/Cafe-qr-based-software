@@ -175,6 +175,7 @@ function applyOrderStatusTiming(update, previousOrder = null) {
 
   const prevStatus = String(previousOrder?.status || "").toLowerCase();
   const now = new Date();
+  const existingAcceptedAt = previousOrder?.acceptedAt || update.acceptedAt || null;
 
   if (nextStatus === "pending") {
     update.acceptedAt = null;
@@ -184,14 +185,21 @@ function applyOrderStatusTiming(update, previousOrder = null) {
   }
 
   if (nextStatus === "accepted" && prevStatus !== "accepted") {
-    update.acceptedAt = previousOrder?.acceptedAt || now;
+    update.acceptedAt = existingAcceptedAt || now;
+    update.servedAt = null;
+    update.acceptToServeMs = null;
+    return update;
+  }
+
+  if (["preparing", "ready"].includes(nextStatus) && !existingAcceptedAt) {
+    update.acceptedAt = now;
     update.servedAt = null;
     update.acceptToServeMs = null;
     return update;
   }
 
   if (nextStatus === "served" && prevStatus !== "served") {
-    const acceptedAt = previousOrder?.acceptedAt || update.acceptedAt || null;
+    const acceptedAt = existingAcceptedAt || now;
     const servedAt = now;
     update.acceptedAt = acceptedAt;
     update.servedAt = servedAt;
