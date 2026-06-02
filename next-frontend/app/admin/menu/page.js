@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -319,6 +319,8 @@ export default function AdminMenuPage() {
   const [nonSmokingSaving, setNonSmokingSaving] = useState(false);
   const [nonSmokingError, setNonSmokingError] = useState("");
   const [nonSmokingSuccess, setNonSmokingSuccess] = useState("");
+  const cafeFormRef = useRef(cafeForm);
+  const quickOrderSaveQueueRef = useRef(Promise.resolve(true));
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -759,6 +761,10 @@ export default function AdminMenuPage() {
     }
   }, [cafeIdForAdmin, requireLogin, role]);
 
+  useEffect(() => {
+    cafeFormRef.current = cafeForm;
+  }, [cafeForm]);
+
   const publishCafeUpdate = useCallback((nextCafe) => {
     const resolvedCafeId = String(nextCafe?._id || cafeIdForAdmin || "").trim();
     if (!resolvedCafeId || !nextCafe) return;
@@ -985,55 +991,63 @@ export default function AdminMenuPage() {
     }));
   };
 
-  const saveQuickOrderFields = useCallback(async (nextFields) => {
+  const saveQuickOrderFields = useCallback((nextFields) => {
     if (!requireLogin(false)) return false;
     if (!cafeIdForAdmin) {
       setCafeError("cafeId is required");
       return false;
     }
 
-    const nextForm = { ...cafeForm, ...nextFields };
+    const nextForm = { ...cafeFormRef.current, ...nextFields };
+    cafeFormRef.current = nextForm;
+    setCafeForm((prev) => ({ ...prev, ...nextFields }));
 
-    setCafeLoading(true);
-    setCafeError("");
-    setCafeSuccess("");
-    try {
-      const body = {
-        quickOrderItemIds: (nextForm.quickOrderItemIds || []).map((id) => String(id || "")).filter(Boolean),
-        quickOrderCigarette25Ids: (nextForm.quickOrderCigarette25Ids || []).map((id) => String(id || "")).filter(Boolean),
-        quickOrderCigarette30Ids: (nextForm.quickOrderCigarette30Ids || []).map((id) => String(id || "")).filter(Boolean),
-      };
-      if (role === "super_admin") body.cafeId = cafeIdForAdmin;
+    const pendingSave = quickOrderSaveQueueRef.current.then(async () => {
+      setCafeLoading(true);
+      setCafeError("");
+      setCafeSuccess("");
+      try {
+        const body = {
+          quickOrderItemIds: (nextForm.quickOrderItemIds || []).map((id) => String(id || "")).filter(Boolean),
+          quickOrderCigarette25Ids: (nextForm.quickOrderCigarette25Ids || []).map((id) => String(id || "")).filter(Boolean),
+          quickOrderCigarette30Ids: (nextForm.quickOrderCigarette30Ids || []).map((id) => String(id || "")).filter(Boolean),
+        };
+        if (role === "super_admin") body.cafeId = cafeIdForAdmin;
 
-      const updated = await apiFetch("/api/admin/cafe", {
-        method: "PATCH",
-        headers: { ...authHeaders() },
-        body: JSON.stringify(body),
-      });
+        const updated = await apiFetch("/api/admin/cafe", {
+          method: "PATCH",
+          headers: { ...authHeaders() },
+          body: JSON.stringify(body),
+        });
 
-      setCafeInfo(updated);
-      setCafeForm((prev) => ({
-        ...prev,
-        quickOrderItemIds: Array.isArray(updated?.quickOrderItemIds)
-          ? updated.quickOrderItemIds.map((id) => String(id || "")).filter(Boolean)
-          : [],
-        quickOrderCigarette25Ids: Array.isArray(updated?.quickOrderCigarette25Ids)
-          ? updated.quickOrderCigarette25Ids.map((id) => String(id || "")).filter(Boolean)
-          : [],
-        quickOrderCigarette30Ids: Array.isArray(updated?.quickOrderCigarette30Ids)
-          ? updated.quickOrderCigarette30Ids.map((id) => String(id || "")).filter(Boolean)
-          : [],
-      }));
-      publishCafeUpdate(updated);
-      setCafeSuccess("Quick order shortcuts updated.");
-      return true;
-    } catch (e) {
-      setCafeError(e.message || "Failed to update quick order shortcuts");
-      return false;
-    } finally {
-      setCafeLoading(false);
-    }
-  }, [cafeForm, cafeIdForAdmin, publishCafeUpdate, requireLogin, role]);
+        setCafeInfo(updated);
+        const syncedFields = {
+          quickOrderItemIds: Array.isArray(updated?.quickOrderItemIds)
+            ? updated.quickOrderItemIds.map((id) => String(id || "")).filter(Boolean)
+            : [],
+          quickOrderCigarette25Ids: Array.isArray(updated?.quickOrderCigarette25Ids)
+            ? updated.quickOrderCigarette25Ids.map((id) => String(id || "")).filter(Boolean)
+            : [],
+          quickOrderCigarette30Ids: Array.isArray(updated?.quickOrderCigarette30Ids)
+            ? updated.quickOrderCigarette30Ids.map((id) => String(id || "")).filter(Boolean)
+            : [],
+        };
+        cafeFormRef.current = { ...cafeFormRef.current, ...syncedFields };
+        setCafeForm((prev) => ({ ...prev, ...syncedFields }));
+        publishCafeUpdate(updated);
+        setCafeSuccess("Quick order shortcuts updated.");
+        return true;
+      } catch (e) {
+        setCafeError(e.message || "Failed to update quick order shortcuts");
+        return false;
+      } finally {
+        setCafeLoading(false);
+      }
+    });
+
+    quickOrderSaveQueueRef.current = pendingSave.catch(() => false);
+    return pendingSave;
+  }, [cafeIdForAdmin, publishCafeUpdate, requireLogin, role]);
 
   const addQuickOrderShortcut = () => {
     const resolvedId = String(quickOrderPickerId || "").trim();
