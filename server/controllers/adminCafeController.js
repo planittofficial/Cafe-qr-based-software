@@ -149,6 +149,21 @@ exports.updateCafe = async (req, res) => {
         .filter((s) => typeof s === "string")
         .map((s) => s);
     }
+    if (Array.isArray(req.body.quickOrderItemIds)) {
+      updates.quickOrderItemIds = req.body.quickOrderItemIds
+        .map((id) => String(id || "").trim())
+        .filter(Boolean);
+    }
+    if (Array.isArray(req.body.quickOrderCigarette25Ids)) {
+      updates.quickOrderCigarette25Ids = req.body.quickOrderCigarette25Ids
+        .map((id) => String(id || "").trim())
+        .filter(Boolean);
+    }
+    if (Array.isArray(req.body.quickOrderCigarette30Ids)) {
+      updates.quickOrderCigarette30Ids = req.body.quickOrderCigarette30Ids
+        .map((id) => String(id || "").trim())
+        .filter(Boolean);
+    }
 
     let incomingLen = 0;
     let filteredLen = 0;
