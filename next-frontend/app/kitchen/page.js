@@ -991,11 +991,11 @@ export default function KitchenPage() {
                               {item.category || `Cigarettes ${bucket.label}`}
                             </div>
                           </div>
-                          <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
-                            {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty
-                              ? `x${quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}`
-                              : item.shortcutSource}
-                          </div>
+                          {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty ? (
+                            <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
+                              x{quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}
+                            </div>
+                          ) : null}
                         </div>
                       </button>
                     ))
@@ -1027,11 +1027,11 @@ export default function KitchenPage() {
                           {item.category || "Quick order item"}
                         </div>
                       </div>
-                      <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
-                        {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty
-                          ? `x${quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}`
-                          : item.shortcutSource}
-                      </div>
+                      {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty ? (
+                        <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
+                          x{quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}
+                        </div>
+                      ) : null}
                     </div>
                   </button>
                 ))
