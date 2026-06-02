@@ -29,6 +29,8 @@ import { Input, Textarea } from "../../../components/ui/Input";
 import { StaffShell } from "../../../components/StaffShell";
 import SoundControl from "../../../components/SoundControl";
 import { AppLoading } from "../../../components/AppLoading";
+import { primeCafeCache } from "../../../lib/cafeClient";
+import { invalidateMenuCache, primeMenuCache } from "../../../lib/menuClient";
 
 function upsertById(list, item) {
   const idx = list.findIndex((x) => x._id === item._id);
@@ -757,6 +759,22 @@ export default function AdminMenuPage() {
     }
   }, [cafeIdForAdmin, requireLogin, role]);
 
+  const publishCafeUpdate = useCallback((nextCafe) => {
+    const resolvedCafeId = String(nextCafe?._id || cafeIdForAdmin || "").trim();
+    if (!resolvedCafeId || !nextCafe) return;
+    primeCafeCache(resolvedCafeId, nextCafe, { broadcast: true });
+  }, [cafeIdForAdmin]);
+
+  const publishMenuUpdate = useCallback((nextItems) => {
+    const resolvedCafeId = String(cafeIdForAdmin || "").trim();
+    if (!resolvedCafeId) return;
+    if (Array.isArray(nextItems)) {
+      primeMenuCache(resolvedCafeId, nextItems, { broadcast: true });
+      return;
+    }
+    invalidateMenuCache(resolvedCafeId, { broadcast: true });
+  }, [cafeIdForAdmin]);
+
   const loadOrders = useCallback(async () => {
     if (!tablesCafeId) return;
     if (!requireLogin(false)) return;
@@ -906,6 +924,7 @@ export default function AdminMenuPage() {
         body: JSON.stringify(body),
       });
       setCafeInfo(updated);
+      publishCafeUpdate(updated);
       setCafeSuccess("Cafe branding updated.");
     } catch (e) {
       setCafeError(e.message || "Failed to update cafe");
@@ -966,47 +985,94 @@ export default function AdminMenuPage() {
     }));
   };
 
+  const saveQuickOrderFields = useCallback(async (nextFields) => {
+    if (!requireLogin(false)) return false;
+    if (!cafeIdForAdmin) {
+      setCafeError("cafeId is required");
+      return false;
+    }
+
+    const nextForm = { ...cafeForm, ...nextFields };
+
+    setCafeLoading(true);
+    setCafeError("");
+    setCafeSuccess("");
+    try {
+      const body = {
+        quickOrderItemIds: (nextForm.quickOrderItemIds || []).map((id) => String(id || "")).filter(Boolean),
+        quickOrderCigarette25Ids: (nextForm.quickOrderCigarette25Ids || []).map((id) => String(id || "")).filter(Boolean),
+        quickOrderCigarette30Ids: (nextForm.quickOrderCigarette30Ids || []).map((id) => String(id || "")).filter(Boolean),
+      };
+      if (role === "super_admin") body.cafeId = cafeIdForAdmin;
+
+      const updated = await apiFetch("/api/admin/cafe", {
+        method: "PATCH",
+        headers: { ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+
+      setCafeInfo(updated);
+      setCafeForm((prev) => ({
+        ...prev,
+        quickOrderItemIds: Array.isArray(updated?.quickOrderItemIds)
+          ? updated.quickOrderItemIds.map((id) => String(id || "")).filter(Boolean)
+          : [],
+        quickOrderCigarette25Ids: Array.isArray(updated?.quickOrderCigarette25Ids)
+          ? updated.quickOrderCigarette25Ids.map((id) => String(id || "")).filter(Boolean)
+          : [],
+        quickOrderCigarette30Ids: Array.isArray(updated?.quickOrderCigarette30Ids)
+          ? updated.quickOrderCigarette30Ids.map((id) => String(id || "")).filter(Boolean)
+          : [],
+      }));
+      publishCafeUpdate(updated);
+      setCafeSuccess("Quick order shortcuts updated.");
+      return true;
+    } catch (e) {
+      setCafeError(e.message || "Failed to update quick order shortcuts");
+      return false;
+    } finally {
+      setCafeLoading(false);
+    }
+  }, [cafeForm, cafeIdForAdmin, publishCafeUpdate, requireLogin, role]);
+
   const addQuickOrderShortcut = () => {
     const resolvedId = String(quickOrderPickerId || "").trim();
     if (!resolvedId) return;
-    setCafeForm((prev) => {
-      const next = new Set((prev.quickOrderItemIds || []).map((id) => String(id)).filter(Boolean));
-      next.add(resolvedId);
-      return { ...prev, quickOrderItemIds: Array.from(next) };
+    const next = new Set((cafeForm.quickOrderItemIds || []).map((id) => String(id)).filter(Boolean));
+    next.add(resolvedId);
+    saveQuickOrderFields({ quickOrderItemIds: Array.from(next) }).then((saved) => {
+      if (saved) setQuickOrderPickerId("");
     });
-    setQuickOrderPickerId("");
   };
 
   const removeQuickOrderShortcut = (menuItemId) => {
     const resolvedId = String(menuItemId || "").trim();
     if (!resolvedId) return;
-    setCafeForm((prev) => ({
-      ...prev,
-      quickOrderItemIds: (prev.quickOrderItemIds || []).filter((id) => String(id) !== resolvedId),
-    }));
+    saveQuickOrderFields({
+      quickOrderItemIds: (cafeForm.quickOrderItemIds || []).filter((id) => String(id) !== resolvedId),
+    });
   };
 
   const addQuickOrderCigaretteShortcut = (bucket, pickerId) => {
     const resolvedId = String(pickerId || "").trim();
     if (!resolvedId) return;
     const key = bucket === "25" ? "quickOrderCigarette25Ids" : "quickOrderCigarette30Ids";
-    setCafeForm((prev) => {
-      const next = new Set((prev[key] || []).map((id) => String(id)).filter(Boolean));
-      next.add(resolvedId);
-      return { ...prev, [key]: Array.from(next) };
+    const next = new Set((cafeForm[key] || []).map((id) => String(id)).filter(Boolean));
+    next.add(resolvedId);
+    saveQuickOrderFields({ [key]: Array.from(next) }).then((saved) => {
+      if (!saved) return;
+      if (bucket === "25") setQuickOrderCigarette25PickerId("");
+      else setQuickOrderCigarette30PickerId("");
     });
-    if (bucket === "25") setQuickOrderCigarette25PickerId("");
-    else setQuickOrderCigarette30PickerId("");
   };
 
   const removeQuickOrderCigaretteShortcut = (bucket, menuItemId) => {
     const resolvedId = String(menuItemId || "").trim();
     if (!resolvedId) return;
     const key = bucket === "25" ? "quickOrderCigarette25Ids" : "quickOrderCigarette30Ids";
-    setCafeForm((prev) => ({
-      ...prev,
-      [key]: (prev[key] || []).filter((id) => String(id) !== resolvedId),
-    }));
+    saveQuickOrderFields({
+      [key]: (cafeForm[key] || []).filter((id) => String(id) !== resolvedId),
+    });
   };
 
   const updateCommunityNote = (idx, patch) => {
@@ -1175,6 +1241,7 @@ export default function AdminMenuPage() {
         setCsvErrors(data.errors);
       }
       setCsvFile(null);
+      publishMenuUpdate();
       load();
     } catch (e) {
       setCsvError(e.message || "CSV upload failed");
@@ -1260,6 +1327,7 @@ export default function AdminMenuPage() {
         headers: { ...authHeaders() },
       });
       setItems([]);
+      publishMenuUpdate([]);
     } catch (e) {
       setError(e.message || "Failed to delete all menu items");
     } finally {
@@ -1500,7 +1568,11 @@ export default function AdminMenuPage() {
       setType("veg");
       setImageUrl("");
       setIsSpecial(false);
-      setItems((prev) => upsertById(prev, data));
+      setItems((prev) => {
+        const nextItems = upsertById(prev, data);
+        publishMenuUpdate(nextItems);
+        return nextItems;
+      });
     } catch (e2) {
       setError(e2.message || "Failed to create item");
     } finally {
@@ -1555,7 +1627,11 @@ export default function AdminMenuPage() {
         headers: { ...authHeaders() },
         body: JSON.stringify(body),
       });
-      setItems((prev) => prev.map((x) => (x._id === data._id ? data : x)));
+      setItems((prev) => {
+        const nextItems = prev.map((x) => (x._id === data._id ? data : x));
+        publishMenuUpdate(nextItems);
+        return nextItems;
+      });
       cancelEdit();
     } catch (e) {
       setError(e.message || "Failed to update item");
@@ -1588,7 +1664,11 @@ export default function AdminMenuPage() {
         body: JSON.stringify(body),
       });
 
-      setItems((prev) => prev.map((item) => (item._id === updated._id ? updated : item)));
+      setItems((prev) => {
+        const nextItems = prev.map((item) => (item._id === updated._id ? updated : item));
+        publishMenuUpdate(nextItems);
+        return nextItems;
+      });
     } catch (e) {
       setError(e.message || "Failed to mark the star item as special");
     } finally {
@@ -1607,7 +1687,11 @@ export default function AdminMenuPage() {
         method: "DELETE",
         headers: { ...authHeaders() },
       });
-      setItems((prev) => prev.filter((x) => x._id !== id));
+      setItems((prev) => {
+        const nextItems = prev.filter((x) => x._id !== id);
+        publishMenuUpdate(nextItems);
+        return nextItems;
+      });
     } catch (e) {
       setError(e.message || "Failed to delete item");
     } finally {
@@ -1624,7 +1708,11 @@ export default function AdminMenuPage() {
         method: "PATCH",
         headers: { ...authHeaders() },
       });
-      setItems((prev) => prev.map((x) => (x._id === data._id ? data : x)));
+      setItems((prev) => {
+        const nextItems = prev.map((x) => (x._id === data._id ? data : x));
+        publishMenuUpdate(nextItems);
+        return nextItems;
+      });
     } catch (e) {
       setError(e.message || "Failed to toggle availability");
     } finally {

@@ -27,8 +27,8 @@ import { Button } from "../../components/ui/Button";
 import { Card, CardContent } from "../../components/ui/Card";
 import { Input, Textarea } from "../../components/ui/Input";
 import { AppLoading } from "../../components/AppLoading";
-import { getCafeWithCache } from "../../lib/cafeClient";
-import { getMenuWithCache } from "../../lib/menuClient";
+import { getCafeUpdateSignalKey, getCafeWithCache } from "../../lib/cafeClient";
+import { getMenuUpdateSignalKey, getMenuWithCache } from "../../lib/menuClient";
 import { getOrderStatusPalette } from "../../lib/orderStatusPalette";
 import { groupOrdersByTable } from "../../lib/orderGrouping";
 import {
@@ -479,6 +479,21 @@ export default function KitchenPage() {
 
   useEffect(() => {
     if (cafeId) loadKitchenData();
+  }, [cafeId, loadKitchenData]);
+
+  useEffect(() => {
+    if (!cafeId || typeof window === "undefined") return;
+
+    const cafeUpdateKey = getCafeUpdateSignalKey(cafeId);
+    const menuUpdateKey = getMenuUpdateSignalKey(cafeId);
+    const handleStorage = (event) => {
+      if (event.storageArea !== window.localStorage) return;
+      if (event.key !== cafeUpdateKey && event.key !== menuUpdateKey) return;
+      loadKitchenData({ forceStatic: true });
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, [cafeId, loadKitchenData]);
 
   useEffect(() => {
