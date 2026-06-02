@@ -293,10 +293,16 @@ export default function AdminMenuPage() {
     latitude: "",
     longitude: "",
     serviceRadiusMeters: "",
+    quickOrderItemIds: [],
+    quickOrderCigarette25Ids: [],
+    quickOrderCigarette30Ids: [],
     showcaseHighlights: [],
     showcaseCommunityNotes: [],
     showcaseCommunityShots: [],
   });
+  const [quickOrderPickerId, setQuickOrderPickerId] = useState("");
+  const [quickOrderCigarette25PickerId, setQuickOrderCigarette25PickerId] = useState("");
+  const [quickOrderCigarette30PickerId, setQuickOrderCigarette30PickerId] = useState("");
   const [showcaseUploading, setShowcaseUploading] = useState(false);
   const [cafeLoading, setCafeLoading] = useState(false);
   const [cafeError, setCafeError] = useState("");
@@ -330,10 +336,29 @@ export default function AdminMenuPage() {
     if (!starId) return null;
     return items.find((item) => String(item?._id || "") === starId) || null;
   }, [analytics?.starItem?._id, items]);
+  const quickOrderRegularItems = useMemo(() => {
+    const ids = Array.isArray(cafeForm.quickOrderItemIds)
+      ? cafeForm.quickOrderItemIds.map((id) => String(id)).filter(Boolean)
+      : [];
+    return ids.map((id) => items.find((item) => String(item?._id || "") === id)).filter(Boolean);
+  }, [cafeForm.quickOrderItemIds, items]);
+  const quickOrderCigarette25Items = useMemo(() => {
+    const ids = Array.isArray(cafeForm.quickOrderCigarette25Ids)
+      ? cafeForm.quickOrderCigarette25Ids.map((id) => String(id)).filter(Boolean)
+      : [];
+    return ids.map((id) => items.find((item) => String(item?._id || "") === id)).filter(Boolean);
+  }, [cafeForm.quickOrderCigarette25Ids, items]);
+  const quickOrderCigarette30Items = useMemo(() => {
+    const ids = Array.isArray(cafeForm.quickOrderCigarette30Ids)
+      ? cafeForm.quickOrderCigarette30Ids.map((id) => String(id)).filter(Boolean)
+      : [];
+    return ids.map((id) => items.find((item) => String(item?._id || "") === id)).filter(Boolean);
+  }, [cafeForm.quickOrderCigarette30Ids, items]);
   const [collapsedSections, setCollapsedSections] = useState({
     pickCafe: true,
     overview: true,
     quickActions: true,
+    quickOrders: true,
     branding: true,
     nonSmoking: true,
     liveOrders: true,
@@ -711,8 +736,20 @@ export default function AdminMenuPage() {
         showcaseCommunityShots: Array.isArray(data?.showcaseCommunityShots)
           ? data.showcaseCommunityShots.map((s) => s || "")
           : [],
+        quickOrderItemIds: Array.isArray(data?.quickOrderItemIds)
+          ? data.quickOrderItemIds.map((id) => String(id || "")).filter(Boolean)
+          : [],
+        quickOrderCigarette25Ids: Array.isArray(data?.quickOrderCigarette25Ids)
+          ? data.quickOrderCigarette25Ids.map((id) => String(id || "")).filter(Boolean)
+          : [],
+        quickOrderCigarette30Ids: Array.isArray(data?.quickOrderCigarette30Ids)
+          ? data.quickOrderCigarette30Ids.map((id) => String(id || "")).filter(Boolean)
+          : [],
       });
       setNonSmokingShots(Array.isArray(data?.showcaseNonSmokingShots) ? normalizeImageList(data.showcaseNonSmokingShots) : []);
+      setQuickOrderPickerId("");
+      setQuickOrderCigarette25PickerId("");
+      setQuickOrderCigarette30PickerId("");
     } catch (e) {
       setCafeError(e.message || "Failed to load cafe");
     } finally {
@@ -845,6 +882,9 @@ export default function AdminMenuPage() {
         latitude: cafeForm.latitude === "" ? null : Number(cafeForm.latitude),
         longitude: cafeForm.longitude === "" ? null : Number(cafeForm.longitude),
         serviceRadiusMeters: cafeForm.serviceRadiusMeters === "" ? 0 : Number(cafeForm.serviceRadiusMeters),
+        quickOrderItemIds: (cafeForm.quickOrderItemIds || []).map((id) => String(id || "")).filter(Boolean),
+        quickOrderCigarette25Ids: (cafeForm.quickOrderCigarette25Ids || []).map((id) => String(id || "")).filter(Boolean),
+        quickOrderCigarette30Ids: (cafeForm.quickOrderCigarette30Ids || []).map((id) => String(id || "")).filter(Boolean),
         showcaseHighlights: (cafeForm.showcaseHighlights || []).map((it) => ({
           name: it?.name || "",
           note: it?.note || "",
@@ -923,6 +963,49 @@ export default function AdminMenuPage() {
     setCafeForm((prev) => ({
       ...prev,
       showcaseHighlights: (prev.showcaseHighlights || []).filter((_, i) => i !== idx),
+    }));
+  };
+
+  const addQuickOrderShortcut = () => {
+    const resolvedId = String(quickOrderPickerId || "").trim();
+    if (!resolvedId) return;
+    setCafeForm((prev) => {
+      const next = new Set((prev.quickOrderItemIds || []).map((id) => String(id)).filter(Boolean));
+      next.add(resolvedId);
+      return { ...prev, quickOrderItemIds: Array.from(next) };
+    });
+    setQuickOrderPickerId("");
+  };
+
+  const removeQuickOrderShortcut = (menuItemId) => {
+    const resolvedId = String(menuItemId || "").trim();
+    if (!resolvedId) return;
+    setCafeForm((prev) => ({
+      ...prev,
+      quickOrderItemIds: (prev.quickOrderItemIds || []).filter((id) => String(id) !== resolvedId),
+    }));
+  };
+
+  const addQuickOrderCigaretteShortcut = (bucket, pickerId) => {
+    const resolvedId = String(pickerId || "").trim();
+    if (!resolvedId) return;
+    const key = bucket === "25" ? "quickOrderCigarette25Ids" : "quickOrderCigarette30Ids";
+    setCafeForm((prev) => {
+      const next = new Set((prev[key] || []).map((id) => String(id)).filter(Boolean));
+      next.add(resolvedId);
+      return { ...prev, [key]: Array.from(next) };
+    });
+    if (bucket === "25") setQuickOrderCigarette25PickerId("");
+    else setQuickOrderCigarette30PickerId("");
+  };
+
+  const removeQuickOrderCigaretteShortcut = (bucket, menuItemId) => {
+    const resolvedId = String(menuItemId || "").trim();
+    if (!resolvedId) return;
+    const key = bucket === "25" ? "quickOrderCigarette25Ids" : "quickOrderCigarette30Ids";
+    setCafeForm((prev) => ({
+      ...prev,
+      [key]: (prev[key] || []).filter((id) => String(id) !== resolvedId),
     }));
   };
 
@@ -1839,6 +1922,147 @@ export default function AdminMenuPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card id="admin-quick-orders" className="border border-orange-100 shadow-xl">
+          <CardContent>
+            <SectionHeader
+              title="Quick order shortcuts"
+              description="Manage regular shortcuts plus fixed cigarette buckets for 25 and 30 rupees."
+              actions={(
+                <div className="text-sm font-semibold text-orange-700">
+                  {quickOrderRegularItems.length + quickOrderCigarette25Items.length + quickOrderCigarette30Items.length} selected
+                </div>
+              )}
+              collapsed={collapsedSections.quickOrders}
+              onToggle={() => toggleSection("quickOrders")}
+            />
+
+            {!collapsedSections.quickOrders && (
+              <>
+                {!cafeIdForAdmin ? (
+                  <div className="mt-4 text-sm text-gray-600">Provide a cafeId to manage quick order shortcuts.</div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-2xl border border-orange-100 bg-white/80 p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-slate-900">Regular shortcuts</div>
+                          <div className="mt-1 text-xs text-slate-500">These show in the scrollable regular row on the kitchen screen.</div>
+                        </div>
+                        <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-800">
+                          {quickOrderRegularItems.length} item{quickOrderRegularItems.length === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center">
+                        <select
+                          value={quickOrderPickerId}
+                          onChange={(e) => setQuickOrderPickerId(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-300/60"
+                        >
+                          <option value="">Select a menu item</option>
+                          {items.map((item) => (
+                            <option key={item._id} value={item._id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                        <Button type="button" onClick={addQuickOrderShortcut} disabled={!quickOrderPickerId}>
+                          Add regular
+                        </Button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {quickOrderRegularItems.length ? (
+                          quickOrderRegularItems.map((item) => (
+                            <div key={item._id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                              <span className="max-w-[12rem] truncate">{item.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeQuickOrderShortcut(item._id)}
+                                className="text-slate-400 transition hover:text-red-600"
+                                aria-label={`Remove ${item.name} from regular shortcuts`}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-500">No regular shortcuts selected.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {[
+                      {
+                        key: "25",
+                        title: "Cigarettes · 25 Rs",
+                        count: quickOrderCigarette25Items.length,
+                        pickerId: quickOrderCigarette25PickerId,
+                        setPickerId: setQuickOrderCigarette25PickerId,
+                        items: quickOrderCigarette25Items,
+                      },
+                      {
+                        key: "30",
+                        title: "Cigarettes · 30 Rs",
+                        count: quickOrderCigarette30Items.length,
+                        pickerId: quickOrderCigarette30PickerId,
+                        setPickerId: setQuickOrderCigarette30PickerId,
+                        items: quickOrderCigarette30Items,
+                      },
+                    ].map((bucket) => (
+                      <div key={bucket.key} className="rounded-2xl border border-orange-100 bg-white/80 p-4 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold text-slate-900">{bucket.title}</div>
+                            <div className="mt-1 text-xs text-slate-500">Fixed cigarette partition used by the kitchen shortcut strip.</div>
+                          </div>
+                          <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-800">
+                            {bucket.count} item{bucket.count === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center">
+                          <select
+                            value={bucket.pickerId}
+                            onChange={(e) => bucket.setPickerId(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-300/60"
+                          >
+                            <option value="">Select a menu item</option>
+                            {items.map((item) => (
+                              <option key={item._id} value={item._id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <Button type="button" onClick={() => addQuickOrderCigaretteShortcut(bucket.key, bucket.pickerId)} disabled={!bucket.pickerId}>
+                            Add to {bucket.key} Rs
+                          </Button>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {bucket.items.length ? (
+                            bucket.items.map((item) => (
+                              <div key={item._id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                                <span className="max-w-[12rem] truncate">{item.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeQuickOrderCigaretteShortcut(bucket.key, item._id)}
+                                  className="text-slate-400 transition hover:text-red-600"
+                                  aria-label={`Remove ${item.name} from ${bucket.title}`}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-slate-500">No items in this partition.</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         <Card id="admin-branding" className="border border-orange-100 shadow-xl">
           <CardContent>

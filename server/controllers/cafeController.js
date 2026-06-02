@@ -25,7 +25,7 @@ exports.getCafeById = async (req, res) => {
 
 exports.createCafe = async (req, res) => {
   try {
-    const { name, address, numberOfTables, logoUrl, brandImageUrl, taxPercent, discountType, discountValue, discountPercent, showcaseHighlights, showcaseCommunityNotes, showcaseCommunityShots, showcaseNonSmokingShots } = req.body;
+    const { name, address, numberOfTables, logoUrl, brandImageUrl, taxPercent, discountType, discountValue, discountPercent, showcaseHighlights, showcaseCommunityNotes, showcaseCommunityShots, showcaseNonSmokingShots, quickOrderItemIds, quickOrderCigarette25Ids, quickOrderCigarette30Ids } = req.body;
     if (!name) return res.status(400).json({ message: "name is required" });
 
     const cafe = await Cafe.create({
@@ -63,6 +63,15 @@ exports.createCafe = async (req, res) => {
       showcaseNonSmokingShots: Array.isArray(showcaseNonSmokingShots)
         ? showcaseNonSmokingShots.filter((s) => typeof s === "string").map((s) => s)
         : undefined,
+      quickOrderItemIds: Array.isArray(quickOrderItemIds)
+        ? quickOrderItemIds.map((id) => String(id || "").trim()).filter(Boolean)
+        : undefined,
+      quickOrderCigarette25Ids: Array.isArray(quickOrderCigarette25Ids)
+        ? quickOrderCigarette25Ids.map((id) => String(id || "").trim()).filter(Boolean)
+        : undefined,
+      quickOrderCigarette30Ids: Array.isArray(quickOrderCigarette30Ids)
+        ? quickOrderCigarette30Ids.map((id) => String(id || "").trim()).filter(Boolean)
+        : undefined,
     });
 
     const tableCount = cafe.numberOfTables || 0;
@@ -98,7 +107,7 @@ exports.resetTableSessions = async (req, res) => {
 
 exports.updateCafe = async (req, res) => {
   try {
-    const { name, address, numberOfTables, logoUrl, brandImageUrl, isActive, taxPercent, discountType, discountValue, discountPercent, showcaseHighlights, showcaseCommunityNotes, showcaseCommunityShots, showcaseNonSmokingShots } = req.body;
+    const { name, address, numberOfTables, logoUrl, brandImageUrl, isActive, taxPercent, discountType, discountValue, discountPercent, showcaseHighlights, showcaseCommunityNotes, showcaseCommunityShots, showcaseNonSmokingShots, quickOrderItemIds, quickOrderCigarette25Ids, quickOrderCigarette30Ids } = req.body;
     const updates = {};
     if (typeof name === "string") updates.name = name;
     if (typeof address === "string") updates.address = address;
@@ -146,6 +155,15 @@ exports.updateCafe = async (req, res) => {
         .filter((s) => typeof s === "string")
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
+    }
+    if (Array.isArray(quickOrderItemIds)) {
+      updates.quickOrderItemIds = quickOrderItemIds.map((id) => String(id || "").trim()).filter(Boolean);
+    }
+    if (Array.isArray(quickOrderCigarette25Ids)) {
+      updates.quickOrderCigarette25Ids = quickOrderCigarette25Ids.map((id) => String(id || "").trim()).filter(Boolean);
+    }
+    if (Array.isArray(quickOrderCigarette30Ids)) {
+      updates.quickOrderCigarette30Ids = quickOrderCigarette30Ids.map((id) => String(id || "").trim()).filter(Boolean);
     }
 
     const cafe = await Cafe.findByIdAndUpdate(req.params.id, updates, { new: true, strict: false });

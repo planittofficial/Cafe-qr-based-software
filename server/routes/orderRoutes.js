@@ -15,6 +15,12 @@ router.get("/:cafeId/mine", orderController.listMyOrdersInCafe);
 router.get("/:cafeId/table/:tableNumber", orderController.listOrdersByTable);
 router.get("/:cafeId/id/:id", orderController.getOrderById);
 router.get(
+  "/:cafeId/popular-items",
+  requireAuth,
+  requireRole(["kitchen", "staff", "cafe_admin", "super_admin"]),
+  orderController.getPopularMenuItemsByCafe
+);
+router.get(
   "/:cafeId",
   requireAuth,
   requireRole(["kitchen", "staff", "cafe_admin", "super_admin"]),

@@ -18,6 +18,18 @@ const cafeSchema = new mongoose.Schema(
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
     serviceRadiusMeters: { type: Number, default: 0, min: 0 },
+    quickOrderItemIds: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "MenuItem" }],
+      default: [],
+    },
+    quickOrderCigarette25Ids: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "MenuItem" }],
+      default: [],
+    },
+    quickOrderCigarette30Ids: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "MenuItem" }],
+      default: [],
+    },
     /** Owner-configured theme (applied via CSS variables on customer app) */
     primaryColor: { type: String, default: "", trim: true },
     accentColor: { type: String, default: "", trim: true },

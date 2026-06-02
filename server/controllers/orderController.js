@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Table = require("../models/Table");
 const Cafe = require("../models/Cafe");
@@ -448,6 +449,75 @@ exports.listOrdersByCafe = async (req, res) => {
 
     const orders = await Order.find(q).sort({ createdAt: -1 }).lean();
     return res.json(orders);
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error });
+  }
+};
+
+exports.getPopularMenuItemsByCafe = async (req, res) => {
+  try {
+    const { cafeId } = req.params;
+    if (!cafeId || !mongoose.Types.ObjectId.isValid(cafeId)) {
+      return res.status(400).json({ message: "cafeId is required" });
+    }
+    if (!canAccessCafe(req.user, cafeId)) {
+      return forbiddenTenant(res);
+    }
+
+    const cafeObjectId = new mongoose.Types.ObjectId(cafeId);
+    const popularItems = await Order.aggregate([
+      {
+        $match: {
+          cafeId: cafeObjectId,
+          status: { $ne: "rejected" },
+        },
+      },
+      { $unwind: "$items" },
+      {
+        $match: {
+          "items.menuItemId": { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$items.menuItemId",
+          totalQty: { $sum: { $ifNull: ["$items.qty", 0] } },
+          orderCount: { $sum: 1 },
+        },
+      },
+      { $sort: { totalQty: -1, orderCount: -1 } },
+      { $limit: 50 },
+      {
+        $lookup: {
+          from: MenuItem.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "menuItem",
+        },
+      },
+      { $unwind: "$menuItem" },
+      {
+        $match: {
+          "menuItem.cafeId": cafeObjectId,
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          menuItemId: { $toString: "$_id" },
+          name: "$menuItem.name",
+          category: "$menuItem.category",
+          description: "$menuItem.description",
+          price: "$menuItem.price",
+          isAvailable: "$menuItem.isAvailable",
+          totalQty: 1,
+          orderCount: 1,
+        },
+      },
+      { $limit: 12 },
+    ]);
+
+    return res.json(popularItems);
   } catch (error) {
     return res.status(500).json({ message: "Server error", error });
   }
