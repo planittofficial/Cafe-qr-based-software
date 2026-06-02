@@ -973,21 +973,30 @@ export default function KitchenPage() {
                     ثابت
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:thin]">
                   {bucket.items.length ? (
                     bucket.items.map((item) => (
                       <button
                         key={item.menuItemId}
                         type="button"
                         onClick={() => addQuickOrderItem(item.menuItemId)}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-orange-200 hover:bg-orange-50"
+                        className="min-w-[13rem] shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/60"
                       >
-                        <span className="max-w-[9rem] truncate">{item.name}</span>
-                        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">
-                          {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty
-                            ? `x${quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}`
-                            : item.shortcutSource}
-                        </span>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="break-words text-sm font-semibold leading-snug text-slate-900">
+                              {item.name}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {item.category || `Cigarettes ${bucket.label}`}
+                            </div>
+                          </div>
+                          <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
+                            {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty
+                              ? `x${quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}`
+                              : item.shortcutSource}
+                          </div>
+                        </div>
                       </button>
                     ))
                   ) : (
