@@ -43,7 +43,13 @@ function formatKitchenPhone(phone) {
   const s = String(phone || "").trim();
   if (!s) return "—";
   if (s.startsWith("manual-table-")) return "Walk-in (no phone on file)";
+  if (s.startsWith("manual-walk-in")) return "Walk-in (no phone on file)";
   return s;
+}
+
+function formatKitchenTableLabel(value) {
+  const tableNumber = Number(value || 0);
+  return tableNumber > 0 ? `Table ${tableNumber}` : "Walk-in";
 }
 
 function lineItemLabel(item) {
@@ -545,10 +551,10 @@ export default function KitchenPage() {
       const line =
         order?.items?.map((i) => `${i.name}×${i.qty}`).join(", ") || "";
       setAlertMsg(
-        `New order · Table ${order.tableNumber}${line ? ` · ${line.slice(0, 80)}` : ""}`,
+        `New order · ${formatKitchenTableLabel(order.tableNumber)}${line ? ` · ${line.slice(0, 80)}` : ""}`,
       );
       setTimeout(() => setAlertMsg(""), 8000);
-      maybeNotifyBrowser("New kitchen order", `Table ${order.tableNumber}`);
+      maybeNotifyBrowser("New kitchen order", formatKitchenTableLabel(order.tableNumber));
       merge(order);
     };
     socket.on("NEW_ORDER", onNewOrder);
@@ -662,8 +668,9 @@ export default function KitchenPage() {
   };
 
   const buildOrderPayloadFromDraft = (draft) => {
-    const parsedTableNumber = Number(draft.tableNumber);
-    if (!parsedTableNumber || parsedTableNumber < 1) {
+    const rawTableNumber = String(draft.tableNumber || "").trim();
+    const parsedTableNumber = rawTableNumber ? Number(rawTableNumber) : null;
+    if (rawTableNumber && (!parsedTableNumber || parsedTableNumber < 1)) {
       return { error: "Table number must be 1 or more" };
     }
     if (!Array.isArray(draft.items) || draft.items.length === 0) {
@@ -674,7 +681,7 @@ export default function KitchenPage() {
       payload: {
         tableNumber: parsedTableNumber,
         customerName: String(draft.customerName || "").trim() || "Walk-in guest",
-        phone: String(draft.phone || "").trim() || `manual-table-${parsedTableNumber}`,
+        phone: String(draft.phone || "").trim() || (parsedTableNumber ? `manual-table-${parsedTableNumber}` : "manual-walk-in"),
         notes: String(draft.notes || "").trim(),
         paymentMode: draft.paymentMode,
         status: draft.status,
@@ -1052,7 +1059,7 @@ export default function KitchenPage() {
                   Quick order preview
                 </div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Table number is required. Everything else uses simple defaults.
+                  Table number is optional. Blank quick orders are saved as walk-in.
                 </div>
               </div>
               <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
@@ -1068,7 +1075,6 @@ export default function KitchenPage() {
                 placeholder="Table number"
                 type="number"
                 min="1"
-                required
               />
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
@@ -1144,7 +1150,7 @@ export default function KitchenPage() {
                 <div className="font-bold text-slate-900">₹{quickOrderEstimate.total.toFixed(2)}</div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={submitQuickOrderPreview} disabled={editorSaving || !quickOrderDraftItemsDetailed.length || !quickOrderDraft.tableNumber}>
+                <Button type="button" onClick={submitQuickOrderPreview} disabled={editorSaving || !quickOrderDraftItemsDetailed.length}>
                   {editorSaving ? "Saving..." : "Confirm"}
                 </Button>
                 <Button type="button" variant="outline" onClick={clearQuickOrderDraft} disabled={editorSaving}>
@@ -1309,7 +1315,7 @@ export default function KitchenPage() {
                             <span
                               className={`text-[18px] font-black leading-none ${statusPalette.titleClassName || "text-slate-900"}`}
                             >
-                              Table {group.tableNumber}
+                              {formatKitchenTableLabel(group.tableNumber)}
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
                               {group.orders.length} orders
@@ -1608,7 +1614,7 @@ export default function KitchenPage() {
                               <span
                                 className={`font-extrabold ${statusPalette.titleClassName || "text-slate-900"}`}
                               >
-                                Table {o.tableNumber}
+                                {formatKitchenTableLabel(o.tableNumber)}
                               </span>
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
@@ -1851,7 +1857,7 @@ export default function KitchenPage() {
                       Kitchen Order View
                     </div>
                     <div className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                      Table {selectedGroup.tableNumber}
+                      {formatKitchenTableLabel(selectedGroup.tableNumber)}
                     </div>
                     <div className="mt-2 text-sm text-slate-600">
                       {selectedGroup.customerNames.length
@@ -2180,7 +2186,6 @@ export default function KitchenPage() {
                     placeholder="Table number"
                     type="number"
                     min="1"
-                    required
                   />
                   <Input
                     value={orderDraft.customerName}

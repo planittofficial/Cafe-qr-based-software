@@ -592,15 +592,18 @@ exports.createStaffOrder = async (req, res) => {
   try {
     const actorCafeId = req.user?.cafeId ? String(req.user.cafeId) : "";
     const cafeId = req.user?.role === "super_admin" ? req.body?.cafeId || actorCafeId : actorCafeId;
-    const tableNumber = Number(req.body?.tableNumber);
+    const rawTableNumber = req.body?.tableNumber;
+    const tableNumber = rawTableNumber === null || rawTableNumber === "" || typeof rawTableNumber === "undefined"
+      ? null
+      : Number(rawTableNumber);
     const customerName = String(req.body?.customerName || "").trim() || "Walk-in guest";
-    const phone = String(req.body?.phone || "").trim() || `manual-table-${tableNumber}`;
+    const phone = String(req.body?.phone || "").trim() || (tableNumber ? `manual-table-${tableNumber}` : "manual-walk-in");
     const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : "";
     const status = typeof req.body?.status === "string" ? req.body.status.trim().toLowerCase() : "pending";
 
     if (!cafeId) return res.status(400).json({ message: "cafeId is required" });
     if (!canAccessCafe(req.user, cafeId)) return forbiddenTenant(res);
-    if (!tableNumber || tableNumber < 1) {
+    if (tableNumber !== null && (!tableNumber || tableNumber < 1)) {
       return res.status(400).json({ message: "tableNumber must be >= 1" });
     }
 
@@ -707,8 +710,11 @@ exports.updateOrder = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(update, "tableNumber")) {
-      const nextTableNumber = Number(update.tableNumber);
-      if (!nextTableNumber || nextTableNumber < 1) {
+      const rawTableNumber = update.tableNumber;
+      const nextTableNumber = rawTableNumber === null || rawTableNumber === "" || typeof rawTableNumber === "undefined"
+        ? null
+        : Number(rawTableNumber);
+      if (nextTableNumber !== null && (!nextTableNumber || nextTableNumber < 1)) {
         return res.status(400).json({ message: "tableNumber must be >= 1" });
       }
       update.tableNumber = nextTableNumber;

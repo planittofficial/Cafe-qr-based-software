@@ -9,7 +9,7 @@ function getOrderTimestamp(order) {
 
 function normalizeTableValue(value) {
   const raw = String(value ?? "").trim();
-  if (!raw) return { key: "unknown", label: "?" };
+  if (!raw) return { key: "walk-in", label: "Walk-in" };
   const numeric = Number(raw);
   if (Number.isFinite(numeric) && numeric > 0) {
     const normalized = String(Math.trunc(numeric));

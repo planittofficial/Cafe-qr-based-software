@@ -13,7 +13,7 @@ const orderItemSchema = new mongoose.Schema(
 const orderSchema = new mongoose.Schema(
   {
     cafeId: { type: mongoose.Schema.Types.ObjectId, ref: "Cafe", required: true, index: true },
-    tableNumber: { type: Number, required: true, min: 1 },
+    tableNumber: { type: Number, default: null, min: 1 },
     /** UUID per table visit — isolates customer order list from previous guests at the same table */
     visitId: { type: String, trim: true, default: "", index: true },
     sessionId: { type: String, trim: true, default: "", index: true },
