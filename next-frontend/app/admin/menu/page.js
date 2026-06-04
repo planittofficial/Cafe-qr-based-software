@@ -1736,7 +1736,7 @@ export default function AdminMenuPage() {
 
   if (!authReady) {
     return (
-      <StaffShell title="Menu management" subtitle="Loading session…" contentClassName="mx-auto max-w-6xl">
+      <StaffShell title="Menu management" subtitle="Loading sessionâ€¦" contentClassName="mx-auto max-w-6xl">
         <AppLoading label="Loading" />
       </StaffShell>
     );
@@ -2083,7 +2083,7 @@ export default function AdminMenuPage() {
                                 className="text-slate-400 transition hover:text-red-600"
                                 aria-label={`Remove ${item.name} from regular shortcuts`}
                               >
-                                ×
+                                Ã—
                               </button>
                             </div>
                           ))
@@ -2096,7 +2096,7 @@ export default function AdminMenuPage() {
                     {[
                       {
                         key: "25",
-                        title: "Cigarettes · 25 Rs",
+                        title: "Cigarettes Â· 25 Rs",
                         count: quickOrderCigarette25Items.length,
                         pickerId: quickOrderCigarette25PickerId,
                         setPickerId: setQuickOrderCigarette25PickerId,
@@ -2104,7 +2104,7 @@ export default function AdminMenuPage() {
                       },
                       {
                         key: "30",
-                        title: "Cigarettes · 30 Rs",
+                        title: "Cigarettes Â· 30 Rs",
                         count: quickOrderCigarette30Items.length,
                         pickerId: quickOrderCigarette30PickerId,
                         setPickerId: setQuickOrderCigarette30PickerId,
@@ -2149,7 +2149,7 @@ export default function AdminMenuPage() {
                                   className="text-slate-400 transition hover:text-red-600"
                                   aria-label={`Remove ${item.name} from ${bucket.title}`}
                                 >
-                                  ×
+                                  Ã—
                                 </button>
                               </div>
                             ))
@@ -2159,6 +2159,7 @@ export default function AdminMenuPage() {
                         </div>
                       </div>
                     ))}
+
                   </div>
                 )}
               </>
@@ -2345,7 +2346,7 @@ export default function AdminMenuPage() {
                   </div>
                   <div className="mt-3 space-y-3">
                     {(cafeForm.showcaseHighlights || []).length === 0 && (
-                      <div className="text-xs text-slate-500">Add items for “Highlights worth the detour”.</div>
+                      <div className="text-xs text-slate-500">Add items for â€œHighlights worth the detourâ€.</div>
                     )}
                     {(cafeForm.showcaseHighlights || []).map((item, idx) => (
                       <div key={`highlight-${idx}`} className="rounded-2xl border border-slate-200 bg-white/90 p-3">
@@ -2684,7 +2685,7 @@ export default function AdminMenuPage() {
                         {order.items?.slice(0, 2).map((it, idx) => (
                           <div key={idx} className="flex justify-between">
                             <span>{it.name} x {it.qty}</span>
-                            <span>₹{(it.price * it.qty).toFixed(2)}</span>
+                            <span>â‚¹{(it.price * it.qty).toFixed(2)}</span>
                           </div>
                         ))}
                         {order.items?.length > 2 && (
@@ -2697,7 +2698,7 @@ export default function AdminMenuPage() {
                       <div className="mt-1 text-xs font-semibold text-slate-600">
                         Accept-Serve: {formatOrderAcceptToServe(order)}
                       </div>
-                      <div className="mt-3 font-semibold text-slate-900">Total ₹{Number(order.totalAmount || 0).toFixed(2)}</div>
+                      <div className="mt-3 font-semibold text-slate-900">Total â‚¹{Number(order.totalAmount || 0).toFixed(2)}</div>
                     </div>
                   ))}
                 </div>

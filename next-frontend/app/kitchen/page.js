@@ -38,6 +38,10 @@ import {
 } from "../../lib/orderTiming";
 import { TableStatusPad } from "../../components/staff/TableStatusPad";
 import { ChevronDown, ClipboardList, QrCode, X } from "lucide-react";
+import {
+  QUICK_ORDER_CATEGORY_ORDER,
+  canonicalizeQuickOrderCategory,
+} from "../../lib/quickOrderCategories";
 
 function formatKitchenPhone(phone) {
   const s = String(phone || "").trim();
@@ -180,6 +184,7 @@ export default function KitchenPage() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [editorOpen, setEditorOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
+  const [quickOrderCategory, setQuickOrderCategory] = useState("All");
   const [editorMode, setEditorMode] = useState("create");
   const [editingOrderId, setEditingOrderId] = useState("");
   const [orderDraft, setOrderDraft] = useState(() => createEmptyOrderDraft());
@@ -258,6 +263,21 @@ export default function KitchenPage() {
       });
     };
 
+    const categoryItems = menuItems
+      .map((item) => ({
+        ...item,
+        quickOrderCategory: canonicalizeQuickOrderCategory(item?.category),
+      }))
+      .filter((item) => item.quickOrderCategory)
+      .slice()
+      .sort((left, right) => {
+        const leftCategoryIndex = QUICK_ORDER_CATEGORY_ORDER.indexOf(left.quickOrderCategory);
+        const rightCategoryIndex = QUICK_ORDER_CATEGORY_ORDER.indexOf(right.quickOrderCategory);
+        if (leftCategoryIndex !== rightCategoryIndex) return leftCategoryIndex - rightCategoryIndex;
+        return String(left?.name || "").localeCompare(String(right?.name || ""));
+      });
+    categoryItems.forEach((item, index) => pushItem(item, "Category", 2000 - index));
+
     const adminIds = Array.isArray(cafeInfo?.quickOrderItemIds)
       ? cafeInfo.quickOrderItemIds.map((id) => String(id || "")).filter(Boolean)
       : [];
@@ -282,7 +302,6 @@ export default function KitchenPage() {
 
     return result
       .sort((left, right) => right.shortcutScore - left.shortcutScore)
-      .slice(0, 12);
   }, [cafeInfo?.quickOrderItemIds, menuById, menuItems, popularMenuItems]);
 
   const cigaretteShortcutBuckets = useMemo(() => {
@@ -324,6 +343,44 @@ export default function KitchenPage() {
     ]);
     return quickOrderShortcutItems.filter((item) => !cigaretteIds.has(item.menuItemId));
   }, [cigaretteShortcutBuckets, quickOrderShortcutItems]);
+
+  const quickOrderCategoryTabs = useMemo(() => {
+    return ["All", ...QUICK_ORDER_CATEGORY_ORDER];
+  }, []);
+
+  const quickOrderItemsByCategory = useMemo(() => {
+    return regularShortcutItems.reduce((acc, item) => {
+      const category = canonicalizeQuickOrderCategory(item?.category) || "Uncategorized";
+      if (!acc.has(category)) acc.set(category, []);
+      acc.get(category).push(item);
+      return acc;
+    }, new Map());
+  }, [regularShortcutItems]);
+
+  const visibleRegularShortcutItems = useMemo(() => {
+    if (quickOrderCategory === "All") return regularShortcutItems;
+    return regularShortcutItems.filter((item) => {
+      const category = canonicalizeQuickOrderCategory(item?.category) || "Uncategorized";
+      return category === quickOrderCategory;
+    });
+  }, [quickOrderCategory, regularShortcutItems]);
+
+  const visibleRegularShortcutGroups = useMemo(() => {
+    if (quickOrderCategory !== "All") {
+      return [[quickOrderCategory, quickOrderItemsByCategory.get(quickOrderCategory) || []]];
+    }
+
+    return quickOrderCategoryTabs
+      .filter((category) => category !== "All")
+      .map((category) => [category, quickOrderItemsByCategory.get(category) || []])
+      .filter(([, items]) => items.length > 0);
+  }, [quickOrderCategory, quickOrderCategoryTabs, quickOrderItemsByCategory]);
+
+  useEffect(() => {
+    if (!quickOrderCategoryTabs.includes(quickOrderCategory)) {
+      setQuickOrderCategory("All");
+    }
+  }, [quickOrderCategory, quickOrderCategoryTabs]);
 
   const draftItemsDetailed = useMemo(() => {
     return orderDraft.items
@@ -951,7 +1008,7 @@ export default function KitchenPage() {
             Quick order shortcuts
           </h2>
           <div className="mt-1 text-sm text-slate-600">
-            Tap a cigarette or regular item to build the quick order preview.
+            Tap a cigarette shortcut or pick a category to slide through the menu items.
           </div>
         </div>
         <div className="rounded-2xl border border-dashed border-orange-200/70 bg-white/55 px-4 py-4 shadow-sm backdrop-blur-sm">
@@ -1014,41 +1071,145 @@ export default function KitchenPage() {
             ))}
           </div>
 
-          <div className="mt-4">
-            <div className="mb-2 text-sm font-semibold text-slate-900">Regular items</div>
-            <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:thin]">
-              {regularShortcutItems.length ? (
-                regularShortcutItems.map((item) => (
+          <div className="mt-4 rounded-3xl border border-orange-100 bg-white/80 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Categories</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Select a tab to show the matching section from the menu board.
+                </div>
+              </div>
+              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                {visibleRegularShortcutItems.length} item{visibleRegularShortcutItems.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+              {quickOrderCategoryTabs.map((category) => {
+                const active = quickOrderCategory === category;
+                const count = category === "All"
+                  ? regularShortcutItems.length
+                  : (quickOrderItemsByCategory.get(category) || []).length;
+                return (
                   <button
-                    key={item.menuItemId}
+                    key={category}
                     type="button"
-                    onClick={() => addQuickOrderItem(item.menuItemId)}
-                    className="min-w-[13rem] shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/60"
+                    onClick={() => setQuickOrderCategory(category)}
+                    className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${
+                      active
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "border border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:bg-orange-50"
+                    }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="break-words text-sm font-semibold leading-snug text-slate-900">
-                          {item.name}
+                    <span>{category}</span>
+                    <span className={`ml-2 rounded-full px-2 py-0.5 ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Regular items</div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    Slide through all regular shortcuts without filtering.
+                  </div>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {regularShortcutItems.length} item{regularShortcutItems.length === 1 ? "" : "s"}
+                </div>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin] snap-x snap-mandatory">
+                {regularShortcutItems.length ? (
+                  regularShortcutItems.map((item) => (
+                    <button
+                      key={item.menuItemId}
+                      type="button"
+                      onClick={() => addQuickOrderItem(item.menuItemId)}
+                      className="min-w-[13rem] shrink-0 snap-start rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/60"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="break-words text-sm font-semibold leading-snug text-slate-900">
+                            {item.name}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {item.category || "Quick order item"}
+                          </div>
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          {item.category || "Quick order item"}
+                        {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty ? (
+                          <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
+                            x{quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
+                    No regular shortcuts found yet.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {visibleRegularShortcutGroups.length ? (
+                visibleRegularShortcutGroups.map(([category, items]) => (
+                  <div key={category} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{category}</div>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {items.length} shortcut{items.length === 1 ? "" : "s"}
                         </div>
                       </div>
-                      {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty ? (
-                        <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
-                          x{quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}
+                      {quickOrderCategory === "All" ? (
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Slide to browse
                         </div>
                       ) : null}
                     </div>
-                  </button>
+
+                    <div className="mt-3 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin] snap-x snap-mandatory">
+                      {items.map((item) => (
+                        <button
+                          key={item.menuItemId}
+                          type="button"
+                          onClick={() => addQuickOrderItem(item.menuItemId)}
+                          className="min-w-[13rem] shrink-0 snap-start rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/60"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="break-words text-sm font-semibold leading-snug text-slate-900">
+                                {item.name}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {item.category || "Quick order item"}
+                              </div>
+                            </div>
+                            {quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty ? (
+                              <div className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
+                                x{quickOrderDraftItemsDetailed.find((draftItem) => draftItem.menuItemId === item.menuItemId)?.qty}
+                              </div>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
-                  No regular shortcuts found yet.
+                  No regular shortcuts found in this category yet.
                 </div>
               )}
             </div>
           </div>
+
         </div>
 
         {quickOrderDraftItemsDetailed.length ? (
