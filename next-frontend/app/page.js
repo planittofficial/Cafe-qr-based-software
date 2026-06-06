@@ -210,7 +210,7 @@ export default function Home() {
           <a href="/" className="flex items-center gap-3">
             <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-stone-200">
               <Image
-                src="https://res.cloudinary.com/cafe-restaurants/image/upload/v1774080951/qrdine/godexhv2hm06cm1epkqo.jpg"
+                src="https://res.cloudinary.com/dntriillu/image/upload/v1774336344/qrdine/yvql2hnvn9zbnbd3pkva.jpg"
                 alt="Coffee Culture logo"
                 fill
                 className="object-cover"
