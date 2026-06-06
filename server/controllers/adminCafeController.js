@@ -164,6 +164,11 @@ exports.updateCafe = async (req, res) => {
         .map((id) => String(id || "").trim())
         .filter(Boolean);
     }
+    if (Array.isArray(req.body.quickOrderCategories)) {
+      updates.quickOrderCategories = req.body.quickOrderCategories
+        .map((c) => String(c || "").trim())
+        .filter(Boolean);
+    }
 
     let incomingLen = 0;
     let filteredLen = 0;

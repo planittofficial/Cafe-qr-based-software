@@ -30,6 +30,11 @@ const cafeSchema = new mongoose.Schema(
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: "MenuItem" }],
       default: [],
     },
+    /** Admin-managed ordered list of category names shown in the kitchen quick-order grid */
+    quickOrderCategories: {
+      type: [{ type: String, trim: true }],
+      default: [],
+    },
     /** Owner-configured theme (applied via CSS variables on customer app) */
     primaryColor: { type: String, default: "", trim: true },
     accentColor: { type: String, default: "", trim: true },
