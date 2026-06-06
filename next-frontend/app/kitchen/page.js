@@ -356,9 +356,9 @@ export default function KitchenPage() {
     return ["All", ...resolveQuickOrderCategories(cafeInfo)];
   }, [cafeInfo?.quickOrderCategories]);
 
-  // All-categories map: every category from the full menu (not just shortcuts)
+  // All-categories map: every category from the full menu, including cigarettes.
   const allCategoryItemsMap = useMemo(() => {
-    const excluded = new Set(["cigarettes", "uncategorized"]);
+    const excluded = new Set(["uncategorized"]);
     const grouped = new Map();
     for (const item of menuItems) {
       const raw = String(item?.category || "").trim();
