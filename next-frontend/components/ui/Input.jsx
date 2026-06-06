@@ -1,5 +1,5 @@
 const inputBase =
-  "w-full rounded-2xl border border-slate-200 bg-white/90 p-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-shadow focus:outline-none focus:ring-2 focus:ring-orange-300/70 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-70";
+  "w-full rounded-2xl border border-slate-200 bg-white/90 p-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-shadow focus:outline-none focus:ring-2 focus:ring-orange-300/70 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800";
 
 const sizes = {
   sm: "p-2.5 text-sm",

@@ -17,7 +17,7 @@ import { setCssVarsFromCafe } from "../../../lib/theme";
 import { formatIndianMobileInput, normalizeIndianMobile } from "../../../lib/phoneIn";
 import { useTableGuard } from "../../../lib/useTableGuard";
 import { getCustomerSession, setCustomerSession } from "../../../lib/customerSession";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import { getCafeWithCache } from "../../../lib/cafeClient";
 
 function cartKey(cafeId, tableNumber) {
@@ -56,6 +56,7 @@ export default function CartPage() {
   const [hydrated, setHydrated] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [cartHintDismissed, setCartHintDismissed] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: "" });
   const reducedMotion = useReducedMotion();
   const tableGuard = useTableGuard({
     cafeId,
@@ -239,7 +240,13 @@ export default function CartPage() {
         nextParams.set("merged", "1");
         nextParams.set("added", String(order?.addedItemsCount || totalItems));
       }
-      router.replace(`/${cafeId}/order/${order._id}?${nextParams.toString()}`);
+      setToast({
+        show: true,
+        message: "Please wait for 10-20 minutes, your order is in process.",
+      });
+      setTimeout(() => {
+        router.replace(`/${cafeId}/orders?${nextParams.toString()}`);
+      }, 2000);
     } catch (e) {
       playSoftError();
       setError(e.message || "Failed to place order");
@@ -465,6 +472,38 @@ export default function CartPage() {
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {toast.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed bottom-24 left-1/2 z-50 w-[min(480px,calc(100%-2rem))] -translate-x-1/2 rounded-3xl border border-emerald-100 bg-white/95 p-4 shadow-xl backdrop-blur-md"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-bold text-slate-900">Order Placed Successfully!</h4>
+                <p className="mt-0.5 text-xs text-slate-600 leading-relaxed">
+                  {toast.message}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <CustomerBottomNav cafeId={cafeId} tableNumber={tableNumber} tableToken={tableToken} />
     </main>

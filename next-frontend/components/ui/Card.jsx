@@ -2,7 +2,7 @@ export function Card({ className = "", elevated = false, ...props }) {
   const shadow = elevated ? "shadow-luxe" : "shadow-card";
   return (
     <div
-      className={`rounded-3xl border border-white/60 bg-white/90 ${shadow} backdrop-blur ${className}`}
+      className={`rounded-3xl border border-white/60 bg-white/90 dark:border-white/[0.06] dark:bg-slate-900/90 ${shadow} backdrop-blur ${className}`}
       {...props}
     />
   );

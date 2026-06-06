@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, X, LogOut, RefreshCw, History, LayoutDashboard, UtensilsCrossed } from "lucide-react";
+import { Menu, X, LogOut, RefreshCw, History, LayoutDashboard, UtensilsCrossed, Sun, Moon } from "lucide-react";
 import { clearToken } from "../lib/auth";
 import { Button } from "./ui/Button";
 
@@ -26,6 +26,33 @@ export function StaffShell({
 }) {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const storedTheme = localStorage.getItem("theme");
+    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark = storedTheme === "dark" || (!storedTheme && systemPrefersDark);
+    setIsDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    if (document.documentElement.classList.contains("dark")) {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+      setIsDarkMode(false);
+    } else {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+      setIsDarkMode(true);
+    }
+  };
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -92,10 +119,22 @@ export function StaffShell({
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:items-center">
             {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+            <button
+              type="button"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/90 text-slate-800 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400/50 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:bg-slate-800"
+              onClick={toggleDarkMode}
+              aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {mounted && isDarkMode ? (
+                <Sun className="h-5 w-5 text-amber-500" />
+              ) : (
+                <Moon className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+              )}
+            </button>
             {staffNav ? (
               <button
                 type="button"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/90 text-slate-800 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white/90 text-slate-800 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400/50 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:bg-slate-800"
                 onClick={() => setDrawerOpen(true)}
                 aria-expanded={drawerOpen}
                 aria-controls="staff-nav-drawer"
@@ -119,16 +158,16 @@ export function StaffShell({
           />
           <aside
             id="staff-nav-drawer"
-            className="relative flex h-full w-full max-w-sm flex-col border-l border-slate-200/80 bg-white shadow-[-12px_0_40px_-8px_rgba(15,23,42,0.18)]"
+            className="relative flex h-full w-full max-w-sm flex-col border-l border-slate-200/80 bg-white dark:bg-slate-900 dark:border-slate-800 shadow-[-12px_0_40px_-8px_rgba(15,23,42,0.18)] dark:shadow-black/50"
             role="dialog"
             aria-modal="true"
             aria-label="Staff navigation"
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <span className="font-display text-lg font-bold text-slate-900">Menu</span>
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-4">
+              <span className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Menu</span>
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850"
                 onClick={() => setDrawerOpen(false)}
                 aria-label="Close"
               >
@@ -142,7 +181,7 @@ export function StaffShell({
                     <Link
                       href={href}
                       onClick={() => setDrawerOpen(false)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-orange-50"
+                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-slate-800 dark:text-slate-200 hover:bg-orange-50 dark:hover:bg-orange-950/20"
                     >
                       <Icon className="h-4 w-4 shrink-0 text-orange-600" />
                       {label}
@@ -151,7 +190,7 @@ export function StaffShell({
                 ))}
               </ul>
             </nav>
-            <div className="border-t border-slate-200 p-4 space-y-2">
+            <div className="border-t border-slate-200 dark:border-slate-800 p-4 space-y-2">
               {staffNav.onRefresh ? (
                 <Button
                   variant="outline"
@@ -165,7 +204,7 @@ export function StaffShell({
                   Refresh data
                 </Button>
               ) : null}
-              <Button variant="outline" className="w-full justify-center gap-2 text-red-700 border-red-200 hover:bg-red-50" onClick={logout}>
+              <Button variant="outline" className="w-full justify-center gap-2 text-red-700 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40" onClick={logout}>
                 <LogOut className="h-4 w-4" />
                 Log out
               </Button>

@@ -37,10 +37,11 @@ import {
   formatOrderServedAt,
 } from "../../lib/orderTiming";
 import { TableStatusPad } from "../../components/staff/TableStatusPad";
-import { ChevronDown, ClipboardList, QrCode, X } from "lucide-react";
+import { ChevronDown, ClipboardList, QrCode, X, Check, Printer } from "lucide-react";
 import {
-  QUICK_ORDER_CATEGORY_ORDER,
+  buildQuickOrderCategoryLookup,
   canonicalizeQuickOrderCategory,
+  resolveQuickOrderCategories,
 } from "../../lib/quickOrderCategories";
 
 function formatKitchenPhone(phone) {
@@ -186,6 +187,7 @@ export default function KitchenPage() {
   const [menuSearch, setMenuSearch] = useState("");
   const [quickOrderCategory, setQuickOrderCategory] = useState("All");
   const [quickOrderCategoryModal, setQuickOrderCategoryModal] = useState("");
+  const [lastCreatedOrder, setLastCreatedOrder] = useState(null);
   const [editorMode, setEditorMode] = useState("create");
   const [editingOrderId, setEditingOrderId] = useState("");
   const [orderDraft, setOrderDraft] = useState(() => createEmptyOrderDraft());
@@ -248,6 +250,10 @@ export default function KitchenPage() {
     );
   }, [menuItems, menuSearch]);
 
+  const quickOrderCategoryLookup = useMemo(() => {
+    return buildQuickOrderCategoryLookup(resolveQuickOrderCategories(cafeInfo));
+  }, [cafeInfo?.quickOrderCategories]);
+
   const quickOrderShortcutItems = useMemo(() => {
     const seen = new Set();
     const result = [];
@@ -264,16 +270,17 @@ export default function KitchenPage() {
       });
     };
 
+    const quickOrderCategoryOrder = resolveQuickOrderCategories(cafeInfo);
     const categoryItems = menuItems
       .map((item) => ({
         ...item,
-        quickOrderCategory: canonicalizeQuickOrderCategory(item?.category),
+        quickOrderCategory: canonicalizeQuickOrderCategory(item?.category, quickOrderCategoryLookup),
       }))
       .filter((item) => item.quickOrderCategory)
       .slice()
       .sort((left, right) => {
-        const leftCategoryIndex = QUICK_ORDER_CATEGORY_ORDER.indexOf(left.quickOrderCategory);
-        const rightCategoryIndex = QUICK_ORDER_CATEGORY_ORDER.indexOf(right.quickOrderCategory);
+        const leftCategoryIndex = quickOrderCategoryOrder.indexOf(left.quickOrderCategory);
+        const rightCategoryIndex = quickOrderCategoryOrder.indexOf(right.quickOrderCategory);
         if (leftCategoryIndex !== rightCategoryIndex) return leftCategoryIndex - rightCategoryIndex;
         return String(left?.name || "").localeCompare(String(right?.name || ""));
       });
@@ -346,8 +353,8 @@ export default function KitchenPage() {
   }, [cigaretteShortcutBuckets, quickOrderShortcutItems]);
 
   const quickOrderCategoryTabs = useMemo(() => {
-    return ["All", ...QUICK_ORDER_CATEGORY_ORDER];
-  }, []);
+    return ["All", ...resolveQuickOrderCategories(cafeInfo)];
+  }, [cafeInfo?.quickOrderCategories]);
 
   // All-categories map: every category from the full menu (not just shortcuts)
   const allCategoryItemsMap = useMemo(() => {
@@ -386,20 +393,20 @@ export default function KitchenPage() {
 
   const quickOrderItemsByCategory = useMemo(() => {
     return regularShortcutItems.reduce((acc, item) => {
-      const category = canonicalizeQuickOrderCategory(item?.category) || "Uncategorized";
+      const category = canonicalizeQuickOrderCategory(item?.category, quickOrderCategoryLookup) || "Uncategorized";
       if (!acc.has(category)) acc.set(category, []);
       acc.get(category).push(item);
       return acc;
     }, new Map());
-  }, [regularShortcutItems]);
+  }, [regularShortcutItems, quickOrderCategoryLookup]);
 
   const visibleRegularShortcutItems = useMemo(() => {
     if (quickOrderCategory === "All") return regularShortcutItems;
     return regularShortcutItems.filter((item) => {
-      const category = canonicalizeQuickOrderCategory(item?.category) || "Uncategorized";
+      const category = canonicalizeQuickOrderCategory(item?.category, quickOrderCategoryLookup) || "Uncategorized";
       return category === quickOrderCategory;
     });
-  }, [quickOrderCategory, regularShortcutItems]);
+  }, [quickOrderCategory, quickOrderCategoryLookup, regularShortcutItems]);
 
   const visibleRegularShortcutGroups = useMemo(() => {
     if (quickOrderCategory !== "All") {
@@ -760,6 +767,352 @@ export default function KitchenPage() {
     setQuickOrderDraft(createEmptyOrderDraft("pending"));
   };
 
+  const printReceipt = (order) => {
+    if (!order) return;
+    const cafeName = cafeInfo?.name || "Coffee Culture";
+    const cafeLogo = cafeInfo?.logoUrl || "";
+    const taxRate = Number(cafeInfo?.taxPercent || 0);
+    const discountType = cafeInfo?.discountType || "percent";
+    const discountValue = Number(cafeInfo?.discountValue || 0);
+
+    const items = Array.isArray(order?.items) ? order.items : [];
+    const tableLabel = Number(order?.tableNumber || 0) > 0 ? `Table ${order.tableNumber}` : "Walk-in";
+    const orderIdShort = String(order?._id || "").slice(-6).toUpperCase();
+    const orderId = String(order?._id || "").slice(-8).toUpperCase();
+    const payMode = String(order?.paymentMode || "cash").toUpperCase();
+    
+    const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString() : new Date().toLocaleString();
+    const updatedAt = order.updatedAt ? new Date(order.updatedAt).toLocaleString() : createdAt;
+    
+    // Pricing
+    const hasServerPricing = typeof order?.subtotalAmount === "number" && typeof order?.taxAmount === "number";
+    const lineSum = items.reduce((s, it) => s + Number(it.price || 0) * Number(it.qty || 0), 0);
+    const subtotal = hasServerPricing ? Number(order.subtotalAmount) : lineSum;
+    const tax = hasServerPricing ? Number(order.taxAmount) : (subtotal * taxRate) / 100;
+    const discount = hasServerPricing
+      ? Number(order.discountAmount || 0)
+      : discountType === "fixed"
+        ? discountValue
+        : (subtotal * discountValue) / 100;
+    const total = hasServerPricing ? Number(order.totalAmount || 0) : Math.max(0, subtotal + tax - discount);
+    const orderNote = typeof order?.notes === "string" ? order.notes.trim() : "";
+
+    const itemsRows = items.map(it => `
+      <tr>
+        <td class="item-name">${String(it.name || "Item")}</td>
+        <td class="qty">${Number(it.qty || 1)}</td>
+        <td class="price">INR ${(Number(it.price || 0) * Number(it.qty || 1)).toFixed(2)}</td>
+      </tr>
+    `).join("");
+
+    const kitchenRowsHtml = items.map(it => `
+      <tr>
+        <td style="padding: 6px 0; font-size: 16px; font-weight: bold; width: 80%;">${String(it.name || "Item")}</td>
+        <td style="padding: 6px 0; text-align: right; font-size: 16px; font-weight: bold; width: 20%; white-space: nowrap;">x ${Number(it.qty || 1)}</td>
+      </tr>
+    `).join("");
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Receipt #${orderIdShort}</title>
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 3mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              color: #111827;
+              font-family: "Courier New", Courier, monospace;
+              font-size: 11px;
+              line-height: 1.35;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+
+            body {
+              width: 74mm;
+              margin: 0 auto;
+              padding: 2mm 0;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 15px;
+              text-align: center;
+              letter-spacing: 0.04em;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .logo {
+              display: block;
+              margin: 0 auto 6px;
+              max-width: 110px;
+              max-height: 48px;
+              object-fit: contain;
+            }
+
+            .cafe-name {
+              margin-bottom: 4px;
+              font-size: 14px;
+              font-weight: 700;
+              text-align: center;
+              text-transform: uppercase;
+              word-break: break-word;
+            }
+
+            .meta {
+              margin-top: 8px;
+            }
+
+            .meta div {
+              margin: 1px 0;
+              word-break: break-word;
+            }
+
+            .divider {
+              margin: 8px 0;
+              border-top: 1px dashed #111827;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+
+            th, td {
+              padding: 4px 0;
+              vertical-align: top;
+            }
+
+            th {
+              font-size: 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+              text-align: left;
+              border-bottom: 1px dashed #111827;
+            }
+
+            .item-name {
+              width: 58%;
+              padding-right: 6px;
+              word-break: break-word;
+            }
+
+            .qty {
+              width: 12%;
+              text-align: center;
+            }
+
+            .price {
+              width: 30%;
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .summary {
+              margin-top: 8px;
+            }
+
+            .line {
+              display: flex;
+              align-items: flex-start;
+              justify-content: space-between;
+              gap: 12px;
+              margin-top: 4px;
+            }
+
+            .line span:first-child {
+              flex: 1 1 auto;
+            }
+
+            .line span:last-child {
+              flex: 0 0 auto;
+              white-space: nowrap;
+              text-align: right;
+            }
+
+            .total {
+              margin-top: 6px;
+              padding-top: 6px;
+              border-top: 1px dashed #111827;
+              font-size: 13px;
+              font-weight: 700;
+            }
+
+            .note-box {
+              margin-top: 8px;
+              padding-top: 6px;
+              border-top: 1px dashed #111827;
+            }
+
+            .note-title {
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+            }
+
+            .note-text {
+              margin-top: 3px;
+              word-break: break-word;
+              white-space: pre-wrap;
+            }
+
+            .footer {
+              margin-top: 10px;
+              padding-top: 6px;
+              border-top: 1px dashed #111827;
+              text-align: center;
+              font-size: 10px;
+            }
+
+            .tag {
+              display: inline-block;
+              border: 1px solid #111827;
+              padding: 2px 8px;
+              font-size: 10px;
+              font-weight: bold;
+              letter-spacing: 1px;
+              text-transform: uppercase;
+              margin-top: 4px;
+            }
+
+            .page-break {
+              page-break-before: always;
+              padding-top: 12px;
+              border-top: 2px dashed #111827;
+              margin-top: 20px;
+            }
+
+            .kitchen-header {
+              font-size: 18px;
+              font-weight: bold;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+          </style>
+        </head>
+        <body>
+          <!-- ═══════════ CUSTOMER COPY ═══════════ -->
+          ${cafeLogo ? `<img class="logo" src="${cafeLogo}" alt="Cafe logo" />` : ""}
+          <div class="cafe-name">${cafeName}</div>
+          <h1>Final Bill</h1>
+          <div class="center"><span class="tag">Customer Copy</span></div>
+          <div class="meta">
+            <div>Order: #${orderIdShort}</div>
+            <div>Table: ${order.tableNumber || "Walk-in"}</div>
+            <div>Customer: ${order.customerName || "Guest"}</div>
+            <div>Phone: ${formatKitchenPhone(order.phone)}</div>
+            <div>Opened: ${createdAt}</div>
+            <div>Last updated: ${updatedAt}</div>
+            <div>Bill type: Combined final bill</div>
+          </div>
+          <div class="divider"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="qty">Qty</th>
+                <th class="price">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRows}
+            </tbody>
+          </table>
+          <div class="summary">
+            <div class="line">
+              <span>Subtotal</span>
+              <span>INR ${subtotal.toFixed(2)}</span>
+            </div>
+            <div class="line">
+              <span>Tax (${taxRate.toFixed(2)}%)</span>
+              <span>INR ${tax.toFixed(2)}</span>
+            </div>
+            <div class="line">
+              <span>Discount (${discountType === "fixed" ? "INR" : `${discountValue.toFixed(2)}%`})</span>
+              <span>INR ${discount.toFixed(2)}</span>
+            </div>
+            <div class="line total">
+              <span>Total</span>
+              <span>INR ${total.toFixed(2)}</span>
+            </div>
+          </div>
+          ${orderNote ? `
+            <div class="note-box">
+              <div class="note-title">Order note</div>
+              <div class="note-text">${orderNote}</div>
+            </div>
+          ` : ""}
+          <div class="footer">
+            <div>Payment: ${payMode}</div>
+            <div>Status: ${String(order.status || "pending").toUpperCase()}</div>
+            <div>Thank you for visiting!</div>
+          </div>
+
+          <!-- ═══════════ KITCHEN COPY ═══════════ -->
+          <div class="page-break">
+            <div class="center">
+              <div class="kitchen-header">Kitchen Order</div>
+              <span class="tag">Kitchen Copy</span>
+            </div>
+            <div class="meta">
+              <div>Order: #${orderIdShort}</div>
+              <div>Table: ${order.tableNumber || "Walk-in"}</div>
+              <div>Time: ${new Date().toLocaleTimeString()}</div>
+            </div>
+            <div class="divider"></div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="font-size: 12px; font-weight: bold; width: 80%;">Item</th>
+                  <th style="font-size: 12px; font-weight: bold; text-align: right; width: 20%;">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${kitchenRowsHtml}
+              </tbody>
+            </table>
+            <div class="divider"></div>
+            <div class="center" style="font-size:10px; margin-top: 6px;">— Prepare promptly —</div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 800);
+            };
+          <\/script>
+        </body>
+      </html>
+    `;
+
+    const w = window.open("", "_blank", "width=420,height=680,scrollbars=yes");
+    if (!w) {
+      alert("Pop-up blocked! Please allow pop-ups for this site and try again.");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
   const buildOrderPayloadFromDraft = (draft) => {
     const rawTableNumber = String(draft.tableNumber || "").trim();
     const parsedTableNumber = rawTableNumber ? Number(rawTableNumber) : null;
@@ -922,6 +1275,8 @@ export default function KitchenPage() {
       } else {
         setOrders((prev) => prev.filter((order) => order._id !== updated._id));
       }
+      // Store the completed order so chef can print the bill
+      setLastCreatedOrder(updated);
       clearQuickOrderDraft();
       playSuccess();
     } catch (e) {
@@ -1048,26 +1403,61 @@ export default function KitchenPage() {
           </div>
         </div>
 
+        {/* ── Last Created Order / Success Notification Banner ── */}
+        {lastCreatedOrder && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm ring-1 ring-emerald-100/60 backdrop-blur-sm flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                <Check className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-emerald-950">Order Taken Successfully!</div>
+                <div className="text-xs font-medium text-emerald-700">
+                  Order #{String(lastCreatedOrder._id || "").slice(-6).toUpperCase()} • Table {lastCreatedOrder.tableNumber || "Walk-in"} • Total: Rs {Number(lastCreatedOrder.totalAmount || lastCreatedOrder.subtotalAmount || 0).toFixed(0)}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-2 border-0"
+                onClick={() => printReceipt(lastCreatedOrder)}
+              >
+                <Printer className="h-4 w-4" />
+                Print Bill & KOT
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-emerald-200 text-emerald-800 hover:bg-emerald-100/70"
+                onClick={() => setLastCreatedOrder(null)}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ── Category grid ── */}
-        <div className="rounded-2xl border border-dashed border-orange-200/70 bg-white/55 px-4 py-4 shadow-sm backdrop-blur-sm">
+        <div className="rounded-2xl border border-dashed border-orange-200/70 bg-white/55 px-4 py-4 shadow-sm backdrop-blur-sm dark:border-white/[0.06] dark:bg-slate-900/40">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-800">
+            <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-800 dark:border-orange-500/20 dark:bg-orange-950/30 dark:text-orange-400">
               {allQuickOrderCategories.length
                 ? `${allQuickOrderCategories.length} categor${allQuickOrderCategories.length === 1 ? "y" : "ies"}`
                 : "No categories yet"}
             </div>
-            <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+            <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
               {menuItems.length} menu item{menuItems.length === 1 ? "" : "s"}
             </div>
           </div>
 
-          <div className="mt-4 rounded-3xl border border-orange-100 bg-white/80 p-4 shadow-sm">
+          <div className="mt-4 rounded-3xl border border-orange-100 bg-white/80 p-4 shadow-sm dark:border-white/[0.06] dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
               {menuLoading ? (
                 Array.from({ length: 15 }).map((_, i) => (
                   <div
                     key={`ql-${i}`}
-                    className="aspect-[1.1] animate-pulse rounded-2xl border border-slate-200 bg-slate-100"
+                    className="aspect-[1.1] animate-pulse rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800/50"
                   />
                 ))
               ) : allQuickOrderCategories.length ? (
@@ -1076,18 +1466,18 @@ export default function KitchenPage() {
                     key={cat.name}
                     type="button"
                     onClick={() => setQuickOrderCategoryModal(cat.name)}
-                    className="group flex aspect-[1.1] min-h-[7rem] flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 px-3 py-4 text-center shadow-sm transition hover:border-orange-300 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 active:scale-[0.98]"
+                    className="group flex aspect-[1.1] min-h-[7rem] flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 px-3 py-4 text-center shadow-sm transition hover:border-orange-300 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 active:scale-[0.98] dark:border-slate-800 dark:from-slate-900/90 dark:to-slate-950/80 dark:hover:border-orange-500/40 dark:hover:bg-orange-950/10 dark:hover:from-slate-900 dark:hover:to-slate-900"
                   >
-                    <div className="line-clamp-2 text-base font-black leading-tight text-slate-900 transition group-hover:text-orange-800 md:text-lg">
+                    <div className="line-clamp-2 text-base font-black leading-tight text-slate-900 transition group-hover:text-orange-800 md:text-lg dark:text-slate-100 dark:group-hover:text-orange-400">
                       {cat.name}
                     </div>
-                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       {cat.count} item{cat.count === 1 ? "" : "s"}
                     </div>
                   </button>
                 ))
               ) : (
-                <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                   No menu categories found for this cafe.
                 </div>
               )}
@@ -1104,22 +1494,22 @@ export default function KitchenPage() {
             aria-label={`${quickOrderCategoryModal} items`}
             onClick={(e) => { if (e.target === e.currentTarget) setQuickOrderCategoryModal(""); }}
           >
-            <div className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
               {/* Modal header */}
-              <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800/60">
                 <div className="min-w-0">
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Category</div>
-                  <div className="mt-1 break-words text-xl font-black leading-tight text-slate-900">
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Category</div>
+                  <div className="mt-1 break-words text-xl font-black leading-tight text-slate-900 dark:text-slate-100">
                     {quickOrderCategoryModal}
                   </div>
-                  <div className="mt-1 text-sm text-slate-500">
+                  <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {selectedCategoryModalItems.length} item{selectedCategoryModalItems.length === 1 ? "" : "s"} available
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setQuickOrderCategoryModal("")}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
                   aria-label="Close"
                 >
                   <X className="h-5 w-5" />
@@ -1131,7 +1521,7 @@ export default function KitchenPage() {
                 {menuLoading ? (
                   <div className="space-y-3">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="h-16 animate-pulse rounded-2xl border border-slate-200 bg-slate-100" />
+                      <div key={i} className="h-16 animate-pulse rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800/50" />
                     ))}
                   </div>
                 ) : selectedCategoryModalItems.length ? (
@@ -1145,19 +1535,19 @@ export default function KitchenPage() {
                           key={item.menuItemId}
                           type="button"
                           onClick={() => addQuickOrderItem(item.menuItemId)}
-                          className="flex min-h-[4.5rem] w-full items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/80 active:scale-[0.99]"
+                          className="flex min-h-[4.5rem] w-full items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left shadow-sm transition hover:border-orange-200 hover:bg-orange-50/80 active:scale-[0.99] dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-orange-500/40 dark:hover:bg-orange-950/15"
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="break-words text-base font-bold leading-snug text-slate-900">
+                            <div className="break-words text-base font-bold leading-snug text-slate-900 dark:text-slate-100">
                               {item.name}
                             </div>
-                            <div className="mt-1 text-sm font-semibold tabular-nums text-slate-600">
+                            <div className="mt-1 text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-400">
                               Rs {Number(item.price || 0).toFixed(0)}
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             {draftQty ? (
-                              <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800">
+                              <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800 dark:bg-orange-950/60 dark:text-orange-400">
                                 ×{draftQty}
                               </span>
                             ) : null}
@@ -1170,17 +1560,17 @@ export default function KitchenPage() {
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-850 dark:bg-slate-950 dark:text-slate-400">
                     No items found in this category.
                   </div>
                 )}
               </div>
 
               {/* Modal footer */}
-              <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-orange-50/60 px-5 py-4">
+              <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-orange-50/60 px-5 py-4 dark:border-slate-800 dark:bg-orange-950/20">
                 <div className="text-sm text-slate-700">
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Bill total</div>
-                  <div className="font-black tabular-nums text-slate-900">Rs {quickOrderEstimate.total.toFixed(0)}</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bill total</div>
+                  <div className="font-black tabular-nums text-slate-900 dark:text-slate-200">Rs {quickOrderEstimate.total.toFixed(0)}</div>
                 </div>
                 <Button type="button" variant="outline" onClick={() => setQuickOrderCategoryModal("")}>
                   Done
@@ -1191,17 +1581,17 @@ export default function KitchenPage() {
         ) : null}
 
         {quickOrderDraftItemsDetailed.length ? (
-          <div className="rounded-2xl border border-orange-100/80 bg-white/90 p-4 shadow-sm ring-1 ring-orange-50/80 backdrop-blur-sm">
+          <div className="rounded-2xl border border-orange-100/80 bg-white/90 p-4 shadow-sm ring-1 ring-orange-50/80 backdrop-blur-sm dark:border-white/[0.06] dark:bg-slate-900/95 dark:ring-white/[0.04]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Quick order preview
                 </div>
-                <div className="mt-1 text-sm text-slate-600">
+                <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                   Table number is optional. Blank quick orders are saved as walk-in.
                 </div>
               </div>
-              <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+              <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-400">
                 {quickOrderDraftItemsDetailed.reduce((sum, item) => sum + item.qty, 0)} item
                 {quickOrderDraftItemsDetailed.reduce((sum, item) => sum + item.qty, 0) === 1 ? "" : "s"}
               </div>
@@ -1215,13 +1605,13 @@ export default function KitchenPage() {
                 type="number"
                 min="1"
               />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                  <div className="text-sm font-semibold text-slate-900">Selected items</div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800/80 dark:bg-slate-950/50">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-200">Selected items</div>
                   <button
                     type="button"
                     onClick={clearQuickOrderDraft}
-                    className="text-xs font-semibold text-slate-500 transition hover:text-red-600"
+                    className="text-xs font-semibold text-slate-500 transition hover:text-red-600 dark:text-slate-400"
                   >
                     Clear
                   </button>
@@ -1230,24 +1620,24 @@ export default function KitchenPage() {
                   {quickOrderDraftItemsDetailed.map((item) => (
                     <div
                       key={`${item.menuItemId}-${item.index}`}
-                      className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                      className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
-                          <div className="break-words text-sm font-semibold leading-snug text-slate-900">
+                          <div className="break-words text-sm font-semibold leading-snug text-slate-900 dark:text-slate-100">
                             {item.menuItem.name}
                           </div>
-                          <div className="mt-1 text-xs text-slate-500">{formatMenuItemMeta(item.menuItem)}</div>
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatMenuItemMeta(item.menuItem)}</div>
                         </div>
                         <Button type="button" variant="danger" size="sm" onClick={() => removeQuickOrderItem(item.index)}>
                           Remove
                         </Button>
                       </div>
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
-                        <div className="inline-flex h-11 items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3 dark:border-slate-800">
+                        <div className="inline-flex h-11 items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
                           <button
                             type="button"
-                            className="flex w-11 items-center justify-center border-r border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 transition hover:bg-slate-100 active:bg-slate-200"
+                            className="flex w-11 items-center justify-center border-r border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 transition hover:bg-slate-100 active:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                             aria-label="Decrease quantity"
                             onClick={() => updateQuickOrderItem(item.index, { qty: Math.max(1, item.qty - 1) })}
                           >
@@ -1264,18 +1654,18 @@ export default function KitchenPage() {
                                 qty: Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1,
                               });
                             }}
-                            className="w-16 border-0 bg-white px-1 text-center text-base font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-200/90"
+                            className="w-16 border-0 bg-white px-1 text-center text-base font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-200/90 dark:bg-slate-950 dark:text-slate-100"
                           />
                           <button
                             type="button"
-                            className="flex w-11 items-center justify-center border-l border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 transition hover:bg-slate-100 active:bg-slate-200"
+                            className="flex w-11 items-center justify-center border-l border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 transition hover:bg-slate-100 active:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                             aria-label="Increase quantity"
                             onClick={() => updateQuickOrderItem(item.index, { qty: item.qty + 1 })}
                           >
                             +
                           </button>
                         </div>
-                        <div className="text-sm font-bold tabular-nums text-slate-900">Rs {item.lineTotal.toFixed(2)}</div>
+                        <div className="text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">Rs {item.lineTotal.toFixed(2)}</div>
                       </div>
                     </div>
                   ))}
@@ -1283,10 +1673,10 @@ export default function KitchenPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/70 px-4 py-3">
-              <div className="text-sm text-slate-700">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Total</div>
-                <div className="font-bold text-slate-900">₹{quickOrderEstimate.total.toFixed(2)}</div>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/70 px-4 py-3 dark:border-orange-500/20 dark:bg-orange-950/20">
+              <div className="text-sm text-slate-700 dark:text-slate-400">
+                <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</div>
+                <div className="font-bold text-slate-900 dark:text-slate-100">₹{quickOrderEstimate.total.toFixed(2)}</div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" onClick={submitQuickOrderPreview} disabled={editorSaving || !quickOrderDraftItemsDetailed.length}>
@@ -1300,7 +1690,7 @@ export default function KitchenPage() {
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-200/90 bg-white/70 p-4 shadow-sm ring-1 ring-slate-100/80 backdrop-blur-sm">
+        <div className="rounded-2xl border border-slate-200/90 bg-white/70 p-4 shadow-sm ring-1 ring-slate-100/80 backdrop-blur-sm dark:border-white/[0.06] dark:bg-slate-900/75 dark:ring-white/[0.04]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="w-full max-w-md space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1974,7 +2364,7 @@ export default function KitchenPage() {
         )}
 
         {!loading && cafeId && groupedFilteredOrders.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-slate-700">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-slate-700 dark:border-slate-850 dark:bg-slate-900/50 dark:text-slate-400">
             {tableFilter || sourceFilter !== "all"
               ? "No orders match your search or source filter. Try clearing filters or refresh."
               : "No active orders on the board yet."}
@@ -2221,7 +2611,7 @@ export default function KitchenPage() {
                             <div className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">
                               Quick Actions
                             </div>
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-6">
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -2269,6 +2659,15 @@ export default function KitchenPage() {
                                 disabled={loading}
                               >
                                 Reject
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full justify-center px-1.5 py-1 text-[11px] font-extrabold border-slate-200 text-slate-800 hover:bg-slate-100"
+                                onClick={() => printReceipt(o)}
+                                disabled={loading}
+                              >
+                                Print
                               </Button>
                             </div>
                           </div>

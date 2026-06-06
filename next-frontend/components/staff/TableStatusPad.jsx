@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { getOrderStatusPalette } from "../../lib/orderStatusPalette";
 
 const DEFAULT_TABLE_COUNT = 18;
@@ -38,6 +39,25 @@ function getTableStatus(group) {
   return statuses[0] || "";
 }
 
+const FREE_STYLE_LIGHT = { backgroundColor: "#f8fafc", borderColor: "#e2e8f0", color: "#334155" };
+const FREE_STYLE_DARK = { backgroundColor: "#0f172a", borderColor: "#1e293b", color: "#94a3b8" };
+const FREE_LEGEND_LIGHT = { backgroundColor: "#f8fafc", borderColor: "#cbd5e1", color: "#475569" };
+const FREE_LEGEND_DARK = { backgroundColor: "#0f172a", borderColor: "#334155", color: "#94a3b8" };
+
+function useIsDarkMode() {
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    setIsDark(el.classList.contains("dark"));
+    const observer = new MutationObserver(() => {
+      setIsDark(el.classList.contains("dark"));
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
+}
+
 export function TableStatusPad({
   title = "Table status",
   subtitle = "Each table changes color by its current status.",
@@ -48,6 +68,7 @@ export function TableStatusPad({
   blinkingTableNumbers = {},
   selectedTableNumber = null,
 }) {
+  const isDark = useIsDarkMode();
   const activeTables = buildTableStatusMap(groups);
   const highestActiveTable = activeTables.size ? Math.max(...activeTables.keys()) : 0;
   const displayCount = Math.max(DEFAULT_TABLE_COUNT, toPositiveNumber(totalTables) || 0, highestActiveTable);
@@ -55,7 +76,7 @@ export function TableStatusPad({
   if (!displayCount) return null;
 
   return (
-    <section className="rounded-3xl border border-slate-200/90 bg-white/85 p-3 shadow-sm ring-1 ring-slate-100/80 backdrop-blur-sm sm:p-4">
+    <section className="rounded-3xl border border-slate-200/90 bg-white/85 p-3 shadow-sm ring-1 ring-slate-100/80 backdrop-blur-sm sm:p-4 dark:border-white/[0.06] dark:bg-slate-900/85 dark:ring-white/[0.04]">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-slate-900">{title}</div>
@@ -87,11 +108,7 @@ export function TableStatusPad({
                       borderColor: palette.pillStyle?.borderColor || palette.bodyStyle?.backgroundColor,
                       color: palette.titleClassName === "text-stone-950" ? "#111827" : "#ffffff",
                     }
-                  : {
-                      backgroundColor: "#f8fafc",
-                      borderColor: "#cbd5e1",
-                      color: "#475569",
-                    }
+                  : (isDark ? FREE_LEGEND_DARK : FREE_LEGEND_LIGHT)
               }
             >
               <span className="inline-block h-2.5 w-2.5 rounded-full bg-current opacity-80" />
@@ -129,12 +146,12 @@ export function TableStatusPad({
               }}
               className={[
                 "relative flex aspect-square min-h-[92px] flex-col items-center justify-center rounded-[1.4rem] border px-1.5 text-center transition sm:min-h-[102px]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900",
                 isActive ? "shadow-[0_12px_30px_-14px_rgba(15,23,42,0.35)]" : "shadow-sm",
                 isExpanded ? "ring-2 ring-slate-900/20 ring-offset-2" : "",
                 isSelected ? "ring-2 ring-slate-950 ring-offset-2" : "",
                 isBlinking ? "animate-pulse" : "",
-                !isActive ? "hover:border-slate-300 hover:bg-white" : "",
+                !isActive ? "hover:border-slate-300 hover:bg-white dark:hover:border-slate-600 dark:hover:bg-slate-800" : "",
               ].join(" ")}
               style={
                 isActive
@@ -143,11 +160,7 @@ export function TableStatusPad({
                       borderColor: palette?.pillStyle?.borderColor || palette?.bodyStyle?.backgroundColor,
                       color: isDarkTextStatus ? "#111827" : "#ffffff",
                     }
-                  : {
-                      backgroundColor: "#f8fafc",
-                      borderColor: "#e2e8f0",
-                      color: "#334155",
-                    }
+                  : (isDark ? FREE_STYLE_DARK : FREE_STYLE_LIGHT)
               }
               aria-pressed={isExpanded}
             >

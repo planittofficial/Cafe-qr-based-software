@@ -298,6 +298,7 @@ export default function AdminMenuPage() {
     quickOrderItemIds: [],
     quickOrderCigarette25Ids: [],
     quickOrderCigarette30Ids: [],
+    quickOrderCategories: [],
     showcaseHighlights: [],
     showcaseCommunityNotes: [],
     showcaseCommunityShots: [],
@@ -305,6 +306,7 @@ export default function AdminMenuPage() {
   const [quickOrderPickerId, setQuickOrderPickerId] = useState("");
   const [quickOrderCigarette25PickerId, setQuickOrderCigarette25PickerId] = useState("");
   const [quickOrderCigarette30PickerId, setQuickOrderCigarette30PickerId] = useState("");
+  const [newQuickOrderCategoryName, setNewQuickOrderCategoryName] = useState("");
   const [showcaseUploading, setShowcaseUploading] = useState(false);
   const [cafeLoading, setCafeLoading] = useState(false);
   const [cafeError, setCafeError] = useState("");
@@ -749,6 +751,9 @@ export default function AdminMenuPage() {
         quickOrderCigarette30Ids: Array.isArray(data?.quickOrderCigarette30Ids)
           ? data.quickOrderCigarette30Ids.map((id) => String(id || "")).filter(Boolean)
           : [],
+        quickOrderCategories: Array.isArray(data?.quickOrderCategories)
+          ? data.quickOrderCategories.map((c) => String(c || "").trim()).filter(Boolean)
+          : [],
       });
       setNonSmokingShots(Array.isArray(data?.showcaseNonSmokingShots) ? normalizeImageList(data.showcaseNonSmokingShots) : []);
       setQuickOrderPickerId("");
@@ -909,6 +914,7 @@ export default function AdminMenuPage() {
         quickOrderItemIds: (cafeForm.quickOrderItemIds || []).map((id) => String(id || "")).filter(Boolean),
         quickOrderCigarette25Ids: (cafeForm.quickOrderCigarette25Ids || []).map((id) => String(id || "")).filter(Boolean),
         quickOrderCigarette30Ids: (cafeForm.quickOrderCigarette30Ids || []).map((id) => String(id || "")).filter(Boolean),
+        quickOrderCategories: (cafeForm.quickOrderCategories || []).map((c) => String(c || "").trim()).filter(Boolean),
         showcaseHighlights: (cafeForm.showcaseHighlights || []).map((it) => ({
           name: it?.name || "",
           note: it?.note || "",
@@ -1011,6 +1017,7 @@ export default function AdminMenuPage() {
           quickOrderItemIds: (nextForm.quickOrderItemIds || []).map((id) => String(id || "")).filter(Boolean),
           quickOrderCigarette25Ids: (nextForm.quickOrderCigarette25Ids || []).map((id) => String(id || "")).filter(Boolean),
           quickOrderCigarette30Ids: (nextForm.quickOrderCigarette30Ids || []).map((id) => String(id || "")).filter(Boolean),
+          quickOrderCategories: (nextForm.quickOrderCategories || []).map((c) => String(c || "").trim()).filter(Boolean),
         };
         if (role === "super_admin") body.cafeId = cafeIdForAdmin;
 
@@ -1031,6 +1038,9 @@ export default function AdminMenuPage() {
           quickOrderCigarette30Ids: Array.isArray(updated?.quickOrderCigarette30Ids)
             ? updated.quickOrderCigarette30Ids.map((id) => String(id || "")).filter(Boolean)
             : [],
+          quickOrderCategories: Array.isArray(updated?.quickOrderCategories)
+            ? updated.quickOrderCategories.map((c) => String(c || "").trim()).filter(Boolean)
+            : [],
         };
         cafeFormRef.current = { ...cafeFormRef.current, ...syncedFields };
         setCafeForm((prev) => ({ ...prev, ...syncedFields }));
@@ -1048,6 +1058,40 @@ export default function AdminMenuPage() {
     quickOrderSaveQueueRef.current = pendingSave.catch(() => false);
     return pendingSave;
   }, [cafeIdForAdmin, publishCafeUpdate, requireLogin, role]);
+
+  const normalizeCategoryName = (value) => String(value || "").trim();
+
+  const addQuickOrderCategory = () => {
+    const nextName = normalizeCategoryName(newQuickOrderCategoryName);
+    if (!nextName) return;
+    const current = (cafeForm.quickOrderCategories || []).map((c) => normalizeCategoryName(c));
+    if (current.some((name) => name.toLowerCase() === nextName.toLowerCase())) {
+      setCafeError(`Category “${nextName}” already exists.`);
+      return;
+    }
+    const nextCategories = [...current, nextName];
+    saveQuickOrderFields({ quickOrderCategories: nextCategories }).then((saved) => {
+      if (saved) setNewQuickOrderCategoryName("");
+    });
+  };
+
+  const removeQuickOrderCategory = (categoryName) => {
+    const nextCategories = (cafeForm.quickOrderCategories || []).filter(
+      (category) => normalizeCategoryName(category) !== normalizeCategoryName(categoryName),
+    );
+    saveQuickOrderFields({ quickOrderCategories: nextCategories });
+  };
+
+  const moveQuickOrderCategory = (index, direction) => {
+    const current = [...(cafeForm.quickOrderCategories || [])];
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= current.length) return;
+    const nextCategories = [...current];
+    const tmp = nextCategories[targetIndex];
+    nextCategories[targetIndex] = nextCategories[index];
+    nextCategories[index] = tmp;
+    saveQuickOrderFields({ quickOrderCategories: nextCategories });
+  };
 
   const addQuickOrderShortcut = () => {
     const resolvedId = String(quickOrderPickerId || "").trim();
@@ -2045,6 +2089,73 @@ export default function AdminMenuPage() {
                   <div className="mt-4 text-sm text-gray-600">Provide a cafeId to manage quick order shortcuts.</div>
                 ) : (
                   <div className="mt-4 space-y-4">
+                    <div className="rounded-2xl border border-orange-100 bg-white/80 p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-slate-900">Quick order categories</div>
+                          <div className="mt-1 text-xs text-slate-500">Manage the ordered list of category tabs shown in the kitchen quick order grid.</div>
+                        </div>
+                        <div className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-800">
+                          {(cafeForm.quickOrderCategories || []).length} category{(cafeForm.quickOrderCategories || []).length === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr,auto]">
+                        <Input
+                          placeholder="New category name"
+                          value={newQuickOrderCategoryName}
+                          onChange={(e) => setNewQuickOrderCategoryName(e.target.value)}
+                          className="w-full"
+                        />
+                        <Button
+                          type="button"
+                          onClick={addQuickOrderCategory}
+                          disabled={!String(newQuickOrderCategoryName || "").trim()}
+                        >
+                          Add category
+                        </Button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(cafeForm.quickOrderCategories || []).length ? (
+                          (cafeForm.quickOrderCategories || []).map((category, index) => (
+                            <div
+                              key={`${category}-${index}`}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                            >
+                              <span className="max-w-[12rem] truncate">{category}</span>
+                              <button
+                                type="button"
+                                onClick={() => moveQuickOrderCategory(index, -1)}
+                                disabled={index === 0}
+                                className="text-slate-500 transition hover:text-slate-900 disabled:opacity-40"
+                                aria-label={`Move ${category} up`}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveQuickOrderCategory(index, 1)}
+                                disabled={index === (cafeForm.quickOrderCategories || []).length - 1}
+                                className="text-slate-500 transition hover:text-slate-900 disabled:opacity-40"
+                                aria-label={`Move ${category} down`}
+                              >
+                                ↓
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeQuickOrderCategory(category)}
+                                className="text-slate-400 transition hover:text-red-600"
+                                aria-label={`Remove ${category}`}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-500">No quick order categories configured yet.</div>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="rounded-2xl border border-orange-100 bg-white/80 p-4 shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
